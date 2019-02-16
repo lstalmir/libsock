@@ -1,42 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Src">
-      <UniqueIdentifier>{793169e5-59ac-4bae-9ee5-5211d8643f1e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Include">
-      <UniqueIdentifier>{ccad0ca7-6bc6-4842-a8d6-c30342cc8c1b}</UniqueIdentifier>
-    </Filter>
+    <ClInclude Include="..\libsock\libsock.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="framework.h">
-      <Filter>Src</Filter>
-    </ClInclude>
-    <ClInclude Include="pch.h">
-      <Filter>Src</Filter>
-    </ClInclude>
-    <ClInclude Include="platform.h">
-      <Filter>Src</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Include\libsock.h">
-      <Filter>Include</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="linux_platform.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
-    <ClCompile Include="pch.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
-    <ClCompile Include="socket.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
-    <ClCompile Include="socket_exception.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
-    <ClCompile Include="windows_platform.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
+    <ClCompile Include="validate.cpp" />
   </ItemGroup>
 </Project>
