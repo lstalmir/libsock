@@ -7,6 +7,10 @@
 #include <iostream>
 #include <system_error>
 
+#ifndef _NODISCARD
+#define _NODISCARD
+#endif
+
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
 
 #if __has_include(<sdkddkver.h>)
@@ -93,9 +97,10 @@
 #endif  //  WINDOWS
 #endif
 
-#elif defined( __POSIX__ )
+#elif defined( __linux__ )
 #define OS_LINUX
 
+#include <unistd.h>
 #include <sys/socket.h>
 
 #else
@@ -117,12 +122,25 @@
 namespace libsock
 {
 
+#if defined( OS_WINDOWS )
+typedef SOCKET _Socket_handle;
+typedef int _Sockaddr_length;
+constexpr _Socket_handle _Invalid_socket = INVALID_SOCKET;
+
+#elif defined( OS_LINUX )
+typedef int _Socket_handle;
+typedef socklen_t _Sockaddr_length;
+constexpr _Socket_handle _Invalid_socket = -1;
+
+#else
+#error _Socket_handle not defined for this OS
+#endif
+
 namespace __impl
 {
 #if defined( OS_WINDOWS ) \
  || defined( OS_LINUX )
 using ::socket;
-using ::closesocket;
 using ::shutdown;
 using ::connect;
 using ::accept;
@@ -134,6 +152,15 @@ using ::send;
 using ::sendto;
 using ::recv;
 using ::recvfrom;
+
+#if defined( OS_WINDOWS )
+using ::closesocket;
+#elif defined( OS_LINUX )
+inline int closesocket( _Socket_handle _Socket ) noexcept
+    {   // closesocket alias for linux
+    return ::close( _Socket );
+    }
+#endif
 
 #else
 #error Socket functions not defined for this OS
@@ -149,18 +176,6 @@ inline int geterror( int _Retval ) noexcept
 #endif
     }
 }
-
-#if defined( OS_WINDOWS )
-typedef SOCKET _Socket_handle;
-constexpr _Socket_handle _Invalid_socket = INVALID_SOCKET;
-
-#elif defined( OS_LINUX )
-typedef int _Socket_handle;
-constexpr _Socket_handle _Invalid_socket = -1;
-
-#else
-#error _Socket_handle not defined for this OS
-#endif
 
 
 // CLASS _Socket_error_category
@@ -255,10 +270,13 @@ enum class address_family
     x25                 = AF_CCITT,         // Reserved for X.25 project
     ax25                = AF_CCITT,         // Amateur Radio AX.25
     rose                = AF_CCITT,         // Amateur Radio X.25 PLP
+    atm                 = AF_ATM,           // Native ATM services
 #elif defined( OS_LINUX )
     x25                 = AF_X25,           // Reserved for X.25 project
     ax25                = AF_AX25,          // Amateur Radio AX.25
     rose                = AF_ROSE,          // Amateur Radio X.25 PLP
+    atm                 = AF_ATMSVC,        // Native ATM services
+    atmpvc              = AF_ATMPVC,        // ATM PVCs
 #endif
 #if defined( OS_WINDOWS )
     implink             = AF_IMPLINK,       // ARPANET IMP address
@@ -280,7 +298,6 @@ enum class address_family
     voiceview           = AF_VOICEVIEW,     // VoiceView
     firefox             = AF_FIREFOX,       // FireFox protocols
     banyan              = AF_BAN,           // Banyan
-    atm                 = AF_ATM,           // Native ATM services
     inet6               = AF_INET6,         // Internet IP protocol version 6 (IPv6)
     cluster             = AF_CLUSTER,       // Microsoft Wolfpack
     ieee1284_4          = AF_12844,         // IEEE 1284.4 WG AF
@@ -301,16 +318,15 @@ enum class address_family
 #endif // OS_WINDOWS_VISTA
 #endif // OS_WINDOWS_XP
 #elif defined( OS_LINUX )
-    atmpvc              ,                   // ATM PVCs
-    ieee802154          ,                   // IEEE 802154 sockets
+    ieee802154          = AF_IEEE802154,    // IEEE 802154 sockets
     infiniband          = AF_IB,            // Native InfiniBand address
     isdn                = AF_ISDN,          // mISDN sockets
     xdp                 = AF_XDP,           // XDP sockets
     nfc                 = AF_NFC,           // NFC sockets
     bluetooth           = AF_BLUETOOTH,     // Bluetooth RFCOMM/L2CAP protocols
-    bridge,             = AF_BRIDGE         // Multiprotocol bridge
-    netlink,                                // 
-    netrom,                                 // Amateur Radio NET/ROM
+    bridge              = AF_BRIDGE,        // Multiprotocol bridge
+    netlink             = AF_NETLINK,       // 
+    netrom              = AF_NETROM,        // Amateur Radio NET/ROM
     netbeui,                                // Reserved for 802.2LLC project
     security,                               // Security callback pseudo address family
     key,                                    // Key management API
@@ -384,35 +400,35 @@ enum class protocol
     ip_sctp             = IPPROTO_SCTP,     //
     ip_raw              = IPPROTO_RAW       //
 #elif defined( OS_LINUX )
-    ip_hopopts          = IPPROTO_HOPOPTS,  // 
-    ip_icmp             = IPPROTO_ICMP,     // ICMP protocol
-    ip_igmp             = IPPROTO_IGMP,     // IGMP protocol
-    ip_ggp              = IPPROTO_GGP,      //
-    ip_ipv4             = IPPROTO_IPV4,     //
-    ip_st               = IPPROTO_ST,       //
-    ip_tcp              = IPPROTO_TCP,      // TCP/IP protocol
-    ip_cbt              = IPPROTO_CBT,      //
-    ip_egp              = IPPROTO_EGP,      //
-    ip_igp              = IPPROTO_IGP,      //
-    ip_pup              = IPPROTO_PUP,      //
-    ip_udp              = IPPROTO_UDP,      // UDP/IP protocol
-    ip_idp              = IPPROTO_IDP,      //
-    ip_rdp              = IPPROTO_RDP,      // RDP (remote desktop) protocol
-    ip_ipv6             = IPPROTO_IPV6,     //
-    ip_routing          = IPPROTO_ROUTING,  //
-    ip_fragment         = IPPROTO_FRAGMENT, //
-    ip_esp              = IPPROTO_ESP,      //
-    ip_ah               = IPPROTO_AH,       //
-    ip_icmpv6           = IPPROTO_ICMPV6,   //
-    ip_none             = IPPROTO_NONE,     //
-    ip_dstopts          = IPPROTO_DSTOPTS,  //
-    ip_nd               = IPPROTO_ND,       //
-    ip_iclfxbm          = IPPROTO_ICLFXBM,  //
-    ip_pim              = IPPROTO_PIM,      //
-    ip_pgm              = IPPROTO_PGM,      //
-    ip_l2tp             = IPPROTO_L2TP,     //
-    ip_sctp             = IPPROTO_SCTP,     //
-    ip_raw              = IPPROTO_RAW       //
+    ip_hopopts,                             // 
+    ip_icmp,                                // ICMP protocol
+    ip_igmp,                                // IGMP protocol
+    ip_ggp,                                 //
+    ip_ipv4,                                //
+    ip_st,                                  //
+    ip_tcp,                                 // TCP/IP protocol
+    ip_cbt,                                 //
+    ip_egp,                                 //
+    ip_igp,                                 //
+    ip_pup,                                 //
+    ip_udp,                                 // UDP/IP protocol
+    ip_idp,                                 //
+    ip_rdp,                                 // RDP (remote desktop) protocol
+    ip_ipv6,                                //
+    ip_routing,                             //
+    ip_fragment,                            //
+    ip_esp,                                 //
+    ip_ah,                                  //
+    ip_icmpv6,                              //
+    ip_none,                                //
+    ip_dstopts,                             //
+    ip_nd,                                  //
+    ip_iclfxbm,                             //
+    ip_pim,                                 //
+    ip_pgm,                                 //
+    ip_l2tp,                                //
+    ip_sctp,                                //
+    ip_raw                                  //
 #else
 #error IP protocols not defined for this OS
 #endif
@@ -554,7 +570,7 @@ public:
         {   // connect to the remote host
         return _Invoke_socket_func( _LIBSOCK __impl::connect,
             reinterpret_cast<sockaddr*>(_Addr),
-            static_cast<int>(_Addrlen) );
+            static_cast<_Sockaddr_length>(_Addrlen) );
         }
 
     _NODISCARD inline socket accept()
@@ -565,7 +581,7 @@ public:
     template<typename _SockAddrTy>
     _NODISCARD inline socket accept( _SockAddrTy* _Addr, size_t* _Addrlen )
         {   // accept incoming connection from the client
-        int addrlen = (_Addrlen) ? static_cast<int>(*_Addrlen) : 0;
+        _Sockaddr_length addrlen = (_Addrlen) ? static_cast<_Sockaddr_length>(*_Addrlen) : 0;
         socket accepted = _Invoke_socket_func( _LIBSOCK __impl::accept,
             reinterpret_cast<sockaddr*>(_Addr),
             (_Addrlen) ? &addrlen : nullptr );
