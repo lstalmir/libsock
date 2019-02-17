@@ -2,10 +2,15 @@
 #define __libsock_h_
 #ifndef RC_INVOKED
 #include <memory>
-#include <istream>
-#include <ostream>
-#include <iostream>
 #include <system_error>
+
+#ifndef _CONSTEXPRIF
+#if defined( __cpp_if_constexpr ) && __cpp_if_constexpr <= __cplusplus
+#define _CONSTEXPRIF constexpr
+#else
+#define _CONSTEXPRIF
+#endif
+#endif
 
 #ifndef _NODISCARD
 #define _NODISCARD
@@ -101,7 +106,10 @@
 #define OS_LINUX
 
 #include <unistd.h>
+#include <netdb.h>
 #include <sys/socket.h>
+
+#include <netinet/in.h>
 
 #else
 #error Unknown target OS
@@ -122,14 +130,33 @@
 namespace libsock
 {
 
+template<typename _Ty, typename _Ty2>
+inline _Ty _Reinterpret_optional_or_default( const _Ty2* _Optional, _Ty _Default )
+    {   // extract value from optional value via reinterpret_cast
+    return ((_Optional != nullptr) ? *reinterpret_cast<const _Ty*>(_Optional) : _Default);
+    }
+
+template<typename _Ty, typename _Ty2>
+inline _Ty _Static_optional_or_default( const _Ty2* _Optional, _Ty _Default )
+    {   // extract value from optional value via static_cast
+    return ((_Optional != nullptr) ? static_cast<_Ty>(*_Optional) : _Default);
+    }
+
+
 #if defined( OS_WINDOWS )
 typedef SOCKET _Socket_handle;
-typedef int _Sockaddr_length;
+typedef int _Sock_size_t;
+typedef int _Sockcomm_data_size_t;
+typedef char _Sockcomm_data_t;
+typedef char _Sockopt_data_t;
 constexpr _Socket_handle _Invalid_socket = INVALID_SOCKET;
 
 #elif defined( OS_LINUX )
 typedef int _Socket_handle;
-typedef socklen_t _Sockaddr_length;
+typedef socklen_t _Sock_size_t;
+typedef size_t _Sockcomm_data_size_t;
+typedef void _Sockcomm_data_t;
+typedef void _Sockopt_data_t;
 constexpr _Socket_handle _Invalid_socket = -1;
 
 #else
@@ -227,12 +254,17 @@ public:
 class socket_exception
     : public std::system_error
     {
-typedef std::system_error _Base;
+typedef std::system_error _MyBase;
 
 public:
     inline socket_exception( int _Errval )
-        : _Base( _Errval, _Socket_error_category{} )
+        : _MyBase( _Errval, _Socket_error_category{} )
         {   // construct basic socket exception
+        }
+
+    inline socket_exception( int _Errval, const char* _Message )
+        : _MyBase( _Errval, _Socket_error_category{}, _Message )
+        {   // construct basic socket exception with own message
         }
     };
 
@@ -260,24 +292,16 @@ public:
     };
 
 
+// ENUM CLASS address_family
 enum class address_family
     {
     unknown             = -1,               // Unknown
     unspec              = AF_UNSPEC,        // Unspecified
     local               = AF_UNIX,          // Local to host (pipes, portals)
     inet                = AF_INET,          // Internet IP protocol version 4 (IPv4)
-#if defined( OS_WINDOWS )
-    x25                 = AF_CCITT,         // Reserved for X.25 project
-    ax25                = AF_CCITT,         // Amateur Radio AX.25
-    rose                = AF_CCITT,         // Amateur Radio X.25 PLP
-    atm                 = AF_ATM,           // Native ATM services
-#elif defined( OS_LINUX )
-    x25                 = AF_X25,           // Reserved for X.25 project
-    ax25                = AF_AX25,          // Amateur Radio AX.25
-    rose                = AF_ROSE,          // Amateur Radio X.25 PLP
-    atm                 = AF_ATMSVC,        // Native ATM services
-    atmpvc              = AF_ATMPVC,        // ATM PVCs
-#endif
+    inet6               = AF_INET6,         // Internet IP protocol version 6 (IPv6)
+    decnet              = AF_DECnet,        // DECnet
+    irda                = AF_IRDA,          // IrDA
 #if defined( OS_WINDOWS )
     implink             = AF_IMPLINK,       // ARPANET IMP address
     pup                 = AF_PUP,           // PUP protocols
@@ -289,7 +313,6 @@ enum class address_family
     ecma                = AF_ECMA,          // European Computer Manufacturers
     datakit             = AF_DATAKIT,       // DATAKIT protocols
     sna                 = AF_SNA,           // IBM SNA
-    decnet              = AF_DECnet,        // DECnet
     dli                 = AF_DLI,           // Direct data link interface
     lat                 = AF_LAT,           // LAT
     hylink              = AF_HYLINK,        // NSC Hyperchannel
@@ -298,11 +321,13 @@ enum class address_family
     voiceview           = AF_VOICEVIEW,     // VoiceView
     firefox             = AF_FIREFOX,       // FireFox protocols
     banyan              = AF_BAN,           // Banyan
-    inet6               = AF_INET6,         // Internet IP protocol version 6 (IPv6)
     cluster             = AF_CLUSTER,       // Microsoft Wolfpack
     ieee1284_4          = AF_12844,         // IEEE 1284.4 WG AF
-    irda                = AF_IRDA,          // IrDA
     netdes              = AF_NETDES,        // Network Designers OSI & gateway
+    x25                 = AF_CCITT,         // Reserved for X.25 project
+    ax25                = AF_CCITT,         // Amateur Radio AX.25
+    rose                = AF_CCITT,         // Amateur Radio X.25 PLP
+    atm                 = AF_ATM,           // Native ATM services
 #ifdef OS_WINDOWS_XP
     tcnprocess          = AF_TCNPROCESS,    // 
     tcnmessage          = AF_TCNMESSAGE,    //
@@ -318,37 +343,42 @@ enum class address_family
 #endif // OS_WINDOWS_VISTA
 #endif // OS_WINDOWS_XP
 #elif defined( OS_LINUX )
+    x25                 = AF_X25,           // Reserved for X.25 project
+    ax25                = AF_AX25,          // Amateur Radio AX.25
+    rose                = AF_ROSE,          // Amateur Radio X.25 PLP
+    atm                 = AF_ATMSVC,        // Native ATM services
+    atmpvc              = AF_ATMPVC,        // ATM PVCs
     ieee802154          = AF_IEEE802154,    // IEEE 802154 sockets
     infiniband          = AF_IB,            // Native InfiniBand address
     isdn                = AF_ISDN,          // mISDN sockets
-    xdp                 = AF_XDP,           // XDP sockets
+    //xdp                 = AF_XDP,           // XDP sockets
     nfc                 = AF_NFC,           // NFC sockets
     bluetooth           = AF_BLUETOOTH,     // Bluetooth RFCOMM/L2CAP protocols
     bridge              = AF_BRIDGE,        // Multiprotocol bridge
     netlink             = AF_NETLINK,       // 
     netrom              = AF_NETROM,        // Amateur Radio NET/ROM
-    netbeui,                                // Reserved for 802.2LLC project
-    security,                               // Security callback pseudo address family
-    key,                                    // Key management API
-    packet,                                 // Packet family
-    ash,                                    // Ash
-    econet,                                 // Acorn Econet
-    rds,                                    // RDS sockets
-    pppox,                                  // PPPoX sockets
-    wanpipe,                                // Wanpipe API Sockets
-    llc,                                    // Linux LLC
-    mpls,                                   // MPLS
-    can,                                    // Controller Area Network
-    tipc,                                   // TIPC sockets
-    iucv,                                   // IUCV sockets
-    rxrpc,                                  // RxRPC sockets
-    phonet,                                 // Phonet sockets
-    caif,                                   // CAIF sockets
-    algorithm,                              // Algorithm sockets
-    vsock,                                  // vSockets
-    kcm,                                    // Kernel Connection Multiplexor
-    qipcrtr,                                // Qualcomm IPC Router
-    smc                                     //
+    netbeui             = AF_NETBEUI,       // Reserved for 802.2LLC project
+    security            = AF_SECURITY,      // Security callback pseudo address family
+    key                 = AF_KEY,           // Key management API
+    packet              = AF_PACKET,        // Packet family
+    ash                 = AF_ASH,           // ASH
+    econet              = AF_ECONET,        // Acorn Econet
+    rds                 = AF_RDS,           // RDS sockets
+    pppox               = AF_PPPOX,         // PPPoX sockets
+    wanpipe             = AF_WANPIPE,       // Wanpipe API Sockets
+    llc                 = AF_LLC,           // Linux LLC
+    mpls                = AF_MPLS,          // MPLS
+    can                 = AF_CAN,           // Controller Area Network
+    tipc                = AF_TIPC,          // TIPC sockets
+    iucv                = AF_IUCV,          // IUCV sockets
+    rxrpc               = AF_RXRPC,         // RxRPC sockets
+    phonet              = AF_PHONET,        // Phonet sockets
+    caif                = AF_CAIF,          // CAIF sockets
+    algorithm           = AF_ALG,           // Algorithm sockets
+    vsock               = AF_VSOCK,         // vSockets
+    kcm                 = AF_KCM,           // Kernel Connection Multiplexor
+    //qipcrtr             = AF_QIPCRTR,       // Qualcomm IPC Router
+    //smc                 = AF_SMC            //
 #endif
     };
 
@@ -365,74 +395,40 @@ enum class socket_type
     };
 
 
+#define _PROTO( _FN ) \
+    _FN( unspec ) \
+    _FN( icmp ) \
+    _FN( igmp ) \
+    _FN( ggp ) \
+    _FN( st ) \
+    _FN( tcp ) \
+    _FN( cbt ) \
+    _FN( egp ) \
+    _FN( igp ) \
+    _FN( pup ) \
+    _FN( udp ) \
+    _FN( idp ) \
+    _FN( rdp ) \
+    _FN( auth )
+    
+#define _PROTO_ENUM_ELEMENT_DECL( proto ) proto,
+
+// ENUM CLASS protocol
 enum class protocol
     {
-    unknown             = -1,               //
-    unspec              = 0,                // Unspecified
-#if defined( OS_WINDOWS )
-    ip_hopopts          = IPPROTO_HOPOPTS,  // 
-    ip_icmp             = IPPROTO_ICMP,     // ICMP protocol
-    ip_igmp             = IPPROTO_IGMP,     // IGMP protocol
-    ip_ggp              = IPPROTO_GGP,      //
-    ip_ipv4             = IPPROTO_IPV4,     //
-    ip_st               = IPPROTO_ST,       //
-    ip_tcp              = IPPROTO_TCP,      // TCP/IP protocol
-    ip_cbt              = IPPROTO_CBT,      //
-    ip_egp              = IPPROTO_EGP,      //
-    ip_igp              = IPPROTO_IGP,      //
-    ip_pup              = IPPROTO_PUP,      //
-    ip_udp              = IPPROTO_UDP,      // UDP/IP protocol
-    ip_idp              = IPPROTO_IDP,      //
-    ip_rdp              = IPPROTO_RDP,      // RDP (remote desktop) protocol
-    ip_ipv6             = IPPROTO_IPV6,     //
-    ip_routing          = IPPROTO_ROUTING,  //
-    ip_fragment         = IPPROTO_FRAGMENT, //
-    ip_esp              = IPPROTO_ESP,      //
-    ip_ah               = IPPROTO_AH,       //
-    ip_icmpv6           = IPPROTO_ICMPV6,   //
-    ip_none             = IPPROTO_NONE,     //
-    ip_dstopts          = IPPROTO_DSTOPTS,  //
-    ip_nd               = IPPROTO_ND,       //
-    ip_iclfxbm          = IPPROTO_ICLFXBM,  //
-    ip_pim              = IPPROTO_PIM,      //
-    ip_pgm              = IPPROTO_PGM,      //
-    ip_l2tp             = IPPROTO_L2TP,     //
-    ip_sctp             = IPPROTO_SCTP,     //
-    ip_raw              = IPPROTO_RAW       //
-#elif defined( OS_LINUX )
-    ip_hopopts,                             // 
-    ip_icmp,                                // ICMP protocol
-    ip_igmp,                                // IGMP protocol
-    ip_ggp,                                 //
-    ip_ipv4,                                //
-    ip_st,                                  //
-    ip_tcp,                                 // TCP/IP protocol
-    ip_cbt,                                 //
-    ip_egp,                                 //
-    ip_igp,                                 //
-    ip_pup,                                 //
-    ip_udp,                                 // UDP/IP protocol
-    ip_idp,                                 //
-    ip_rdp,                                 // RDP (remote desktop) protocol
-    ip_ipv6,                                //
-    ip_routing,                             //
-    ip_fragment,                            //
-    ip_esp,                                 //
-    ip_ah,                                  //
-    ip_icmpv6,                              //
-    ip_none,                                //
-    ip_dstopts,                             //
-    ip_nd,                                  //
-    ip_iclfxbm,                             //
-    ip_pim,                                 //
-    ip_pgm,                                 //
-    ip_l2tp,                                //
-    ip_sctp,                                //
-    ip_raw                                  //
-#else
-#error IP protocols not defined for this OS
-#endif
+    unknown = -1,
+    _PROTO( _PROTO_ENUM_ELEMENT_DECL )
     };
+
+#define _PROTO_NAME_DECL( proto ) #proto,
+static constexpr const char* _Protocol_name[] =
+    {
+    _PROTO( _PROTO_NAME_DECL )
+    };
+
+#undef _PROTO
+#undef _PROTO_ENUM_ELEMENT_DECL
+#undef _PROTO_NAME_DECL
 
 
 enum class socket_opt_ip
@@ -444,31 +440,27 @@ enum class socket_opt_ip
     leave_source_group  = IP_DROP_SOURCE_MEMBERSHIP,
     block_source        = IP_BLOCK_SOURCE,
     unblock_source      = IP_UNBLOCK_SOURCE,
-    dont_fragment       = IP_DONTFRAGMENT,
     header_included     = IP_HDRINCL,
-    mtu,
-    mtu_discover,
     multicast_interface = IP_MULTICAST_IF,
     multicast_loop      = IP_MULTICAST_LOOP,
     multicast_ttl       = IP_MULTICAST_TTL,
-    original_arrival_interface = IP_ORIGINAL_ARRIVAL_IF,
     ttl                 = IP_TTL,
     type_of_service     = IP_TOS,
     unicast_interface   = IP_UNICAST_IF,
-    recv_interface      = IP_RECVIF,
-    recv_dest_address   = IP_RECVDSTADDR,
-    recv_broadcast      = IP_RECEIVE_BROADCAST,
-    interface_list_enable = IP_IFLIST,
-    interface_list_add  = IP_ADD_IFLIST,
-    interface_list_delete = IP_DEL_IFLIST,
-    routing_header      = IP_RTHDR,
-    recv_routing_header = IP_RECVRTHDR,
     packet_info         = IP_PKTINFO,
-    hop_limit           = IP_HOPLIMIT,
-    packet_traffic_class = IP_TCLASS,
-    recv_packet_traffic_class = IP_RECVTCLASS,
-    ecn                 = IP_ECN,
-    packet_info_ext     = IP_PKTINFO_EX
+#if defined( OS_WINDOWS )
+    dont_fragment       = IP_DONTFRAGMENT,
+#error mtu not defined
+#error mtu_discover not defined
+#elif defined( OS_LINUX )
+    dont_fragment       = 0x7f000001, // use special value to fallback to MTU_DISCOVER
+    mtu                 = IP_MTU,
+    mtu_discover        = IP_MTU_DISCOVER,
+#else
+#error dont_fragment not defined
+#error mtu not defined
+#error mtu_discover not defined
+#endif
     };
 
 
@@ -493,7 +485,7 @@ public:
         this->_MyHandle = _LIBSOCK __impl::socket(
             static_cast<int>(_Family),
             static_cast<int>(_Type),
-            static_cast<int>(_Protocol) );
+            _Get_platform_protocol_id( _Protocol ) );
         _Throw_if_failed( (int)(this->_MyHandle) );
         }
 
@@ -506,38 +498,24 @@ public:
     template<typename _SockOptT>
     inline void set_opt( _SockOptT _Opt, const void* _Optval, size_t _Optlen )
         {   // set socket option value
-        _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
-        _LIBSOCK_CHECK_ARG_NOT_EQ( _Optlen, 0 );
-        _Invoke_socket_func( _LIBSOCK __impl::setsockopt,
-            _Socket_opt_level<_SockOptT>::value,
-            static_cast<int>(_Opt),
-            reinterpret_cast<const char*>(_Optval),
-            static_cast<int>(_Optlen) );
+        _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptT>::value,
+            _Optval, _Optlen );
         }
 
     template<typename _SockOptT>
     inline void get_opt( _SockOptT _Opt, void* _Optval, size_t* _Optlen ) const
         {   // get socket option value
-        _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
-        _LIBSOCK_CHECK_ARG_NOT_NULL( _Optlen );
-        _LIBSOCK_CHECK_ARG_NOT_EQ( *_Optlen, 0 );
-        int optlen = (_Optlen) ? static_cast<int>(*_Optlen) : 0;
-        _Invoke_socket_func( _LIBSOCK __impl::getsockopt,
-            _Socket_opt_level<_SockOptT>::value,
-            static_cast<int>(_Opt),
-            reinterpret_cast<char*>(_Optval),
-            _Optlen ? &optlen : nullptr );
-        if( _Optlen != nullptr )
-            (*_Optlen) = static_cast<size_t>(optlen);
+        _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptT>::value,
+            _Optval, _Optlen );
         }
 
     inline virtual int send( const void* _Data, size_t _ByteSize, int _Flags = 0 )
         {   // send message to the remote host
         if( _ByteSize == 0 ) return 0;
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Data );
-        return _Invoke_socket_func( _LIBSOCK __impl::send,
-            reinterpret_cast<const char*>(_Data),
-            static_cast<int>(_ByteSize),
+        return (int)_Invoke_socket_func( _LIBSOCK __impl::send,
+            reinterpret_cast<const _Sockcomm_data_t*>(_Data),
+            static_cast<_Sockcomm_data_size_t>(_ByteSize),
             _Flags );
         }
 
@@ -545,18 +523,18 @@ public:
         {   // receive message from the remote host
         if( _ByteSize == 0 ) return 0;
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Data );
-        return _Invoke_socket_func( _LIBSOCK __impl::recv,
-            reinterpret_cast<char*>(_Data),
-            static_cast<int>(_ByteSize),
+        return (int)_Invoke_socket_func( _LIBSOCK __impl::recv,
+            reinterpret_cast<_Sockcomm_data_t*>(_Data),
+            static_cast<_Sockcomm_data_size_t>(_ByteSize),
             _Flags );
         }
 
     template<typename _SockAddrTy>
-    inline void bind( _SockAddrTy* _Addr, size_t _Addrlen )
+    inline void bind( const _SockAddrTy* _Addr, size_t _Addrlen )
         {   // bind socket to the network interface
         _Invoke_socket_func( _LIBSOCK __impl::bind,
-            reinterpret_cast<sockaddr*>(_Addr),
-            static_cast<int>(_Addrlen) );
+            reinterpret_cast<const sockaddr*>(_Addr),
+            static_cast<_Sock_size_t>(_Addrlen) );
         }
 
     inline void listen( size_t _QueueLength = SOMAXCONN )
@@ -566,11 +544,11 @@ public:
         }
 
     template<typename _SockAddrTy>
-    inline void connect( _SockAddrTy* _Addr, size_t _Addrlen )
+    inline void connect( const _SockAddrTy* _Addr, size_t _Addrlen )
         {   // connect to the remote host
-        return _Invoke_socket_func( _LIBSOCK __impl::connect,
-            reinterpret_cast<sockaddr*>(_Addr),
-            static_cast<_Sockaddr_length>(_Addrlen) );
+        _Invoke_socket_func( _LIBSOCK __impl::connect,
+            reinterpret_cast<const sockaddr*>(_Addr),
+            static_cast<_Sock_size_t>(_Addrlen) );
         }
 
     _NODISCARD inline socket accept()
@@ -581,7 +559,7 @@ public:
     template<typename _SockAddrTy>
     _NODISCARD inline socket accept( _SockAddrTy* _Addr, size_t* _Addrlen )
         {   // accept incoming connection from the client
-        _Sockaddr_length addrlen = (_Addrlen) ? static_cast<_Sockaddr_length>(*_Addrlen) : 0;
+        _Sock_size_t addrlen = _Static_optional_or_default<_Sock_size_t>( _Addrlen, 0 );
         socket accepted = _Invoke_socket_func( _LIBSOCK __impl::accept,
             reinterpret_cast<sockaddr*>(_Addr),
             (_Addrlen) ? &addrlen : nullptr );
@@ -660,18 +638,32 @@ protected:
             || (this->_MyType == socket_type::seqpacket);
         }
 
-    template<typename _Fx, typename... _Ax>
-    inline auto _Invoke_socket_func( _Fx&& _Func, _Ax... _Args ) const
+    template<typename _Rx, typename... _Ax>
+    inline _Rx _Invoke_socket_func( _Rx(*_Func)(_Socket_handle, _Ax...), _Ax... _Args ) const
         {   // invoke socket function and raise exception on error
-        auto result = _Func( this->_MyHandle, _Args... );
-        _Throw_if_failed( (int)(result) );
-        return result;
+        if _CONSTEXPRIF( std::is_void<_Rx>::value )
+            { // function does not return any value
+            _Func( this->_MyHandle, _Args... );
+            }
+        else
+            { // function has non-void return value type
+            _Rx result = _Func( this->_MyHandle, _Args... );
+            _Throw_if_failed( (int)(result) );
+            return result;
+            }
         }
 
-    template<typename _Fx, typename... _Ax>
-    inline auto _Invoke_socket_func_nothrow( _Fx&& _Func, _Ax... _Args ) const noexcept
+    template<typename _Rx, typename... _Ax>
+    inline _Rx _Invoke_socket_func_nothrow( _Rx(*_Func)(_Socket_handle, _Ax...), _Ax... _Args ) const noexcept
         {   // invoke socket function without raising exception on error
-        return _Func( this->_MyHandle, _Args... );
+        if _CONSTEXPRIF( std::is_void<_Rx>::value )
+            { // function does not return any value
+            _Func( this->_MyHandle, _Args... );
+            }
+        else
+            { // function has non-void return value type
+            return _Func( this->_MyHandle, _Args... );
+            }
         }
 
     inline void _Throw_if_failed( int _Retval ) const
@@ -682,7 +674,76 @@ protected:
             }
         }
 
+private:
+    inline static int _Get_platform_protocol_id( protocol _Protocol )
+        {   // get protocol number from system database
+        size_t protocol_offset = static_cast<size_t>(_Protocol);
+        if( protocol_offset >= std::extent<decltype(_Protocol_name)>::value )
+            { // protocol argument invalid (out of range)
+            throw socket_exception( -1, "Invalid protocol" );
+            }
+        protoent* proto = ::getprotobyname( _Protocol_name[protocol_offset] );
+        if( proto == nullptr )
+            { // protocol is not supported
+            throw socket_exception( -1, "Unsupported protocol" );
+            }
+        return static_cast<int>(proto->p_proto);
+        }
+
+    inline virtual void _Set_socket_opt( int _Opt, int _Opt_level, const void* _Optval, size_t _Optlen )
+        {   // set socket option value
+        _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
+        _LIBSOCK_CHECK_ARG_NOT_EQ( _Optlen, 0 );
+        _Invoke_socket_func( _LIBSOCK __impl::setsockopt,
+            _Opt_level, _Opt,
+            reinterpret_cast<const _Sockopt_data_t*>(_Optval),
+            static_cast<_Sock_size_t>(_Optlen) );
+        }
+
+    inline virtual void _Get_socket_opt( int _Opt, int _Opt_level, void* _Optval, size_t* _Optlen ) const
+        {   // get socket option value
+        _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
+        _LIBSOCK_CHECK_ARG_NOT_NULL( _Optlen );
+        _LIBSOCK_CHECK_ARG_NOT_EQ( *_Optlen, 0 );
+        _Sock_size_t optlen = _Static_optional_or_default<_Sock_size_t>( _Optlen, 0 );
+        _Invoke_socket_func( _LIBSOCK __impl::getsockopt,
+            _Opt_level, _Opt,
+            reinterpret_cast<_Sockopt_data_t*>(_Optval),
+            _Optlen ? &optlen : nullptr );
+        if( _Optlen != nullptr )
+            (*_Optlen) = static_cast<size_t>(optlen);
+        }
+
     };
+
+template<>
+inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
+    {   // get socket ip option value
+#if defined( OS_LINUX )
+    if( _Opt == socket_opt_ip::dont_fragment )
+        {
+        _Opt = socket_opt_ip::mtu_discover;
+        }
+#endif// OS_LINUX
+    return _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
+        _Optval, _Optlen );
+    }
+
+template<>
+inline void socket::set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Optlen )
+    {   // set socket ip option value
+#if defined( OS_LINUX )
+    if( _Opt == socket_opt_ip::dont_fragment )
+        {   // Linux OSes set DF flag via mtu MTU_DISCOVER settings
+        long value = _Reinterpret_optional_or_default( _Optval, 0 );
+        value = (value != 0) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
+        return _Set_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
+            &value, sizeof( value ) );
+        }
+#endif// OS_LINUX
+    return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
+        _Optval, _Optlen );
+    }
 
 }// libsock
 

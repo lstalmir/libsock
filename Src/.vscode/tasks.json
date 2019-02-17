@@ -6,7 +6,14 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "g++ validate.cpp -o libsock"
+            "command": "g++ validate.cpp -o libsock",
+            "problemMatcher": []
+        },
+        {
+            "label": "build-dbg",
+            "type": "shell",
+            "command": "g++ validate.cpp -O0 -ggdb -o libsock",
+            "problemMatcher": []
         }
     ]
 }
