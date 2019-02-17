@@ -3,3 +3,20 @@
 struct IUnknown;
 
 #include "libsock.h"
+using namespace libsock;
+
+#include <string>
+using namespace std;
+
+
+int main()
+    {
+    volatile libsock_scope sockscope;
+
+    libsock::socket localhost_sock(
+        address_family::inet,
+        socket_type::stream,
+        protocol::ip_tcp );
+
+    return 0;
+    }
