@@ -12,13 +12,29 @@
 #endif
 #endif
 
+#ifndef _HAS_INCLUDE
+#if defined( __has_include )
+#define _HAS_INCLUDE __has_include
+#else
+#define _HAS_INCLUDE(...) 1
+#endif
+#endif
+
 #ifndef _NODISCARD
 #define _NODISCARD
 #endif
 
+// if the environment does not provide specific headers, the features
+// may be disabled using following directives:
+//  - NOIP      - disables IP
+//  - NOBTH     - disables bluetooth
+//  - NOIRDA    - disables IRDA
+//  - NOIPX     - disables IPX
+//  - NOATALK   - disables AppleTalk
+
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
 
-#if __has_include(<sdkddkver.h>)
+#if _HAS_INCLUDE(<sdkddkver.h>)
 #include <sdkddkver.h>
 #endif
 
@@ -27,23 +43,33 @@
 
 #include <WinSock2.h>
 
-#if __has_include(<WS2tcpip.h>)
-#define WINDOWS_IP
+#if !defined( NOIP ) && _HAS_INCLUDE(<WS2tcpip.h>)
+#define _HAS_IP
 #include <WS2tcpip.h>
 #endif
 
-#if __has_include(<WSNwLink.h>)
-#define WINDOWS_IPX
+#if !defined( NOIPX ) && _HAS_INCLUDE(<WSNwLink.h>)
+#define _HAS_IPX
 #include <WSNwLink.h>
 #endif
 
-#if __has_include(<AF_Irda.h>)
-#define WINDOWS_IRDA
+#if !defined( NOIRDA ) && _HAS_INCLUDE(<AF_Irda.h>)
+#define _HAS_IRDA
 #include <AF_Irda.h>
 #endif
 
-#if __has_include(<atalkwsh.h>)
-#define WINDOWS_APPLETALK
+#if !defined( NOBTH ) && _HAS_INCLUDE(<WS2bth.h>)
+#define _HAS_BTH
+#include <WS2bth.h>
+#endif
+
+#if !defined( NOATM ) && _HAS_INCLUDE(<WS2atm.h>)
+#define _HAS_ATM
+#include <WS2atm.h>
+#endif
+
+#if !defined( NOATALK ) && _HAS_INCLUDE(<atalkwsh.h>)
+#define _HAS_APPLETALK
 #include <atalkwsh.h>
 #endif
 
@@ -179,6 +205,7 @@ using ::send;
 using ::sendto;
 using ::recv;
 using ::recvfrom;
+using ::getprotobyname;
 
 #if defined( OS_WINDOWS )
 using ::closesocket;
@@ -298,16 +325,25 @@ enum class address_family
     unknown             = -1,               // Unknown
     unspec              = AF_UNSPEC,        // Unspecified
     local               = AF_UNIX,          // Local to host (pipes, portals)
+    decnet              = AF_DECnet,        // DECnet
+#ifdef _HAS_IP
     inet                = AF_INET,          // Internet IP protocol version 4 (IPv4)
     inet6               = AF_INET6,         // Internet IP protocol version 6 (IPv6)
-    decnet              = AF_DECnet,        // DECnet
+#endif
+#ifdef _HAS_IRDA
     irda                = AF_IRDA,          // IrDA
+#endif
+#ifdef _HAS_IPX
+    ipx                 = AF_IPX,           // Novell IPX protocols
+#endif
+#ifdef _HAS_ATALK
+    appletalk           = AF_APPLETALK,     // AppleTalk
+#endif
 #if defined( OS_WINDOWS )
     implink             = AF_IMPLINK,       // ARPANET IMP address
     pup                 = AF_PUP,           // PUP protocols
     chaos               = AF_CHAOS,         // MIT CHAOS protocols
     ns                  = AF_NS,            // XEROX NS protocols
-    ipx                 = AF_IPX,           // Novell IPX protocols
     iso                 = AF_ISO,           // ISO protocols
     osi                 = AF_OSI,           // OSI protocols
     ecma                = AF_ECMA,          // European Computer Manufacturers
@@ -316,7 +352,6 @@ enum class address_family
     dli                 = AF_DLI,           // Direct data link interface
     lat                 = AF_LAT,           // LAT
     hylink              = AF_HYLINK,        // NSC Hyperchannel
-    appletalk           = AF_APPLETALK,     // AppleTalk
     netbios             = AF_NETBIOS,       // NetBIOS-style address
     voiceview           = AF_VOICEVIEW,     // VoiceView
     firefox             = AF_FIREFOX,       // FireFox protocols
@@ -327,13 +362,17 @@ enum class address_family
     x25                 = AF_CCITT,         // Reserved for X.25 project
     ax25                = AF_CCITT,         // Amateur Radio AX.25
     rose                = AF_CCITT,         // Amateur Radio X.25 PLP
+#ifdef _HAS_ATM
     atm                 = AF_ATM,           // Native ATM services
+#endif
 #ifdef OS_WINDOWS_XP
     tcnprocess          = AF_TCNPROCESS,    // 
     tcnmessage          = AF_TCNMESSAGE,    //
     iclfxbm             = AF_ICLFXBM,       //
 #ifdef OS_WINDOWS_VISTA
+#ifdef _HAS_BTH
     bluetooth           = AF_BTH,           // Bluetooth RFCOMM/L2CAP protocols
+#endif
 #ifdef OS_WINDOWS_7
     link                = AF_LINK,          //
 #ifdef OS_WINDOWS_10
@@ -346,8 +385,10 @@ enum class address_family
     x25                 = AF_X25,           // Reserved for X.25 project
     ax25                = AF_AX25,          // Amateur Radio AX.25
     rose                = AF_ROSE,          // Amateur Radio X.25 PLP
+#ifdef _HAS_ATM
     atm                 = AF_ATMSVC,        // Native ATM services
     atmpvc              = AF_ATMPVC,        // ATM PVCs
+#endif
     ieee802154          = AF_IEEE802154,    // IEEE 802154 sockets
     infiniband          = AF_IB,            // Native InfiniBand address
     isdn                = AF_ISDN,          // mISDN sockets
@@ -431,6 +472,8 @@ static constexpr const char* _Protocol_name[] =
 #undef _PROTO_NAME_DECL
 
 
+#ifdef _HAS_IP
+// ENUM CLASS socket_opt_ip
 enum class socket_opt_ip
     {
     unknown             = -1,
@@ -462,22 +505,32 @@ enum class socket_opt_ip
 #error dont_fragment not defined
 #endif
     };
+#endif// _HAS_IP
 
 
 template<typename _SockOptT>
 struct _Socket_opt_level;
 
+#ifdef _HAS_IP
 template<>
 struct _Socket_opt_level<socket_opt_ip>
-    { static constexpr int value = IPPROTO_IP; };
-
-
-//#define _Invoke_socket_func( FUNC, ... ) (FUNC(this->_MyHandle,__VA_ARGS__))
+    { 
+    static constexpr int value = IPPROTO_IP;
+    static constexpr int value_v6 = IPPROTO_IPV6;
+    };
+#endif// _HAS_IP
 
 
 // CLASS socket
 class socket
     {
+public: // shutdown flag bits
+    static constexpr int in = 1;
+    static constexpr int out = 2;
+
+private:
+    static constexpr int _inout = socket::in | socket::out;
+
 public:
     inline socket( address_family _Family, socket_type _Type, protocol _Protocol )
         : _MyHandle( _Invalid_socket )
@@ -574,6 +627,18 @@ public:
         return socket( static_cast<_Socket_handle>(_Accepted_handle) );
         }
 
+    inline void shutdown( int _Flags = socket::_inout )
+        {   // close socket connection in specified direction
+        int how = 0;
+        if( _Has_flags( _Flags, socket::_inout ) )
+            how = socket::_Shut_inout;
+        else if( _Has_flags( _Flags, socket::in ) )
+            how = socket::_Shut_in;
+        else if( _Has_flags( _Flags, socket::out ) )
+            how = socket::_Shut_out;
+        _Throw_if_failed( __impl::shutdown( this->_MyHandle, how ) );
+        }
+
 public:
     template<typename _Ty>
     inline socket& operator<<( const _Ty& _Data )
@@ -656,19 +721,24 @@ protected:
         }
 
 private:
-    inline static int _Get_platform_protocol_id( protocol _Protocol )
+    _NODISCARD inline static int _Get_platform_protocol_id( protocol _Protocol )
         {   // get protocol number from system database
         size_t protocol_offset = static_cast<size_t>(_Protocol);
         if( protocol_offset >= std::extent<decltype(_Protocol_name)>::value )
             { // protocol argument invalid (out of range)
             throw socket_exception( -1, "Invalid protocol" );
             }
-        protoent* proto = ::getprotobyname( _Protocol_name[protocol_offset] );
+        protoent* proto = __impl::getprotobyname( _Protocol_name[protocol_offset] );
         if( proto == nullptr )
             { // protocol is not supported
             throw socket_exception( -1, "Unsupported protocol" );
             }
         return static_cast<int>(proto->p_proto);
+        }
+
+    _NODISCARD inline static bool _Has_flags( int _Combined, int _Flags ) noexcept
+        {   // check if combined flags contain specified values
+        return (((_Combined) & (_Flags)) == (_Flags));
         }
 
     inline virtual void _Set_socket_opt( int _Opt, int _Opt_level, const void* _Optval, size_t _Optlen )
@@ -686,6 +756,12 @@ private:
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optlen );
         _LIBSOCK_CHECK_ARG_NOT_EQ( *_Optlen, 0 );
+#   ifdef _HAS_IP
+        if( _Opt_level == _Socket_opt_level<socket_opt_ip>::value && _MyAddr_family == address_family::inet6 )
+            { // _Socket_opt_level for IP has additional value for IPv6
+            _Opt_level = _Socket_opt_level<socket_opt_ip>::value_v6;
+            }
+#   endif
         _Sock_size_t optlen = _Static_optional_or_default<_Sock_size_t>( _Optlen, 0 );
         _Throw_if_failed( __impl::getsockopt( this->_MyHandle,
             _Opt_level, _Opt,
@@ -695,8 +771,21 @@ private:
             (*_Optlen) = static_cast<size_t>(optlen);
         }
 
+private: // platform-dependent shutdown values
+#if defined( OS_WINDOWS )
+    static constexpr int _Shut_in = SD_RECEIVE;
+    static constexpr int _Shut_out = SD_SEND;
+    static constexpr int _Shut_inout = SD_BOTH;
+#elif defined( OS_LINUX )
+    static constexpr int _Shut_in = SHUT_RD;
+    static constexpr int _Shut_out = SHUT_WR;
+    static constexpr int _Shut_inout = SHUT_RDWR;
+#else
+#error Shutdown flags not defined
+#endif
     };
 
+#ifdef _HAS_IP
 template<>
 inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
     {   // get socket ip option value
@@ -725,6 +814,7 @@ inline void socket::set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Op
     return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
         _Optval, _Optlen );
     }
+#endif
 
 }// libsock
 
