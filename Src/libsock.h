@@ -16,14 +16,6 @@
 #define _NODISCARD
 #endif
 
-// if the environment does not provide specific headers, the features
-// may be disabled using following directives:
-//  - NOIP      - disables IP
-//  - NOBTH     - disables bluetooth
-//  - NOIRDA    - disables IRDA
-//  - NOIPX     - disables IPX
-//  - NOATALK   - disables AppleTalk
-
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
 #define OS_WINDOWS
 
@@ -33,60 +25,6 @@
 #include <WS2bth.h>
 #include <WS2atm.h>
 #include <AF_Irda.h>
-
-#if defined( _WIN32_WINNT_NT4 ) && ( _WIN32_WINNT >=_WIN32_WINNT_NT4 )
-#define WINNT_4_0
-#define OS_WINDOWS_NT
-
-#if defined( _WIN32_WINNT_WIN2K ) && ( _WIN32_WINNT >= _WIN32_WINNT_WIN2K )
-#define WINNT_5_0
-#define OS_WINDOWS_2000
-
-#if defined( _WIN32_WINNT_WINXP ) && ( _WIN32_WINNT >= _WIN32_WINNT_WINXP )
-#define WINNT_5_1
-#define OS_WINDOWS_XP
-#define OS_WINDOWS_SERVER_2003
-
-#if defined( _WIN32_WINNT_WS03 ) && ( _WIN32_WINNT >= _WIN32_WINNT_WS03 )
-#define WINNT_5_2
-#define OS_WINDOWS_XP_SP2
-#define OS_WINDOWS_SERVER_2003_SP1
-
-#if defined( _WIN32_WINNT_VISTA ) && ( _WIN32_WINNT >= _WIN32_WINNT_VISTA )
-#define WINNT_6_0
-#define OS_WINDOWS_VISTA
-#define OS_WINDOWS_SERVER_2008
-
-#if defined( _WIN32_WINNT_WIN7 ) && ( _WIN32_WINNT >= _WIN32_WINNT_WIN7 )
-#define WINNT_6_1
-#define OS_WINDOWS_7
-#define OS_WINDOWS_SERVER_2008_R2
-
-#if defined( _WIN32_WINNT_WIN8 ) && ( _WIN32_WINNT >= _WIN32_WINNT_WIN8 )
-#define WINNT_6_2
-#define OS_WINDOWS_8
-#define OS_WINDOWS_SERVER_2012
-
-#if defined( _WIN32_WINNT_WINBLUE ) && ( _WIN32_WINNT >= _WIN32_WINNT_WINBLUE )
-#define WINNT_6_3
-#define OS_WINDOWS_8_1
-#define OS_WINDOWS_SERVER_2012_R2
-
-#if defined( _WIN32_WINNT_WIN10 ) && ( _WIN32_WINNT >= _WIN32_WINNT_WIN10 )
-#define WINNT_10_0
-#define OS_WINDOWS_10
-#define OS_WINDOWS_SERVER_2016
-
-//          WINNT_10_0, WINDOWS 10
-#endif  //  WINNT_6_3, WINDOWS 8.1
-#endif  //  WINNT_6_2, WINDOWS 8
-#endif  //  WINNT_6_1, WINDOWS 7
-#endif  //  WINNT_6_0, WINDOWS VISTA
-#endif  //  WINNT_5_2, WINDOWS XP SP2
-#endif  //  WINNT_5_1, WINDOWS XP
-#endif  //  WINNT_5_0, WINDOWS 2000
-#endif  //  WINNT_4_0, WINDOWS NT
-#endif  //  WINDOWS
 
 #elif defined( __linux__ )
 #define OS_LINUX
