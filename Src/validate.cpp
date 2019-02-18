@@ -16,7 +16,7 @@ int main()
     libsock::socket localhost_sock(
         address_family::inet,
         socket_type::stream,
-        protocol::tcp );
+        tcp_protocol() );
 
     return 0;
     }

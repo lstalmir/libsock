@@ -12,14 +12,6 @@
 #endif
 #endif
 
-#ifndef _HAS_INCLUDE
-#if defined( __has_include )
-#define _HAS_INCLUDE __has_include
-#else
-#define _HAS_INCLUDE(...) 1
-#endif
-#endif
-
 #ifndef _NODISCARD
 #define _NODISCARD
 #endif
@@ -33,45 +25,14 @@
 //  - NOATALK   - disables AppleTalk
 
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
-
-#if _HAS_INCLUDE(<sdkddkver.h>)
-#include <sdkddkver.h>
-#endif
-
-#ifdef _WIN32_WINNT
 #define OS_WINDOWS
 
+#include <sdkddkver.h>
 #include <WinSock2.h>
-
-#if !defined( NOIP ) && _HAS_INCLUDE(<WS2tcpip.h>)
-#define _HAS_IP
 #include <WS2tcpip.h>
-#endif
-
-#if !defined( NOIPX ) && _HAS_INCLUDE(<WSNwLink.h>)
-#define _HAS_IPX
-#include <WSNwLink.h>
-#endif
-
-#if !defined( NOIRDA ) && _HAS_INCLUDE(<AF_Irda.h>)
-#define _HAS_IRDA
-#include <AF_Irda.h>
-#endif
-
-#if !defined( NOBTH ) && _HAS_INCLUDE(<WS2bth.h>)
-#define _HAS_BTH
 #include <WS2bth.h>
-#endif
-
-#if !defined( NOATM ) && _HAS_INCLUDE(<WS2atm.h>)
-#define _HAS_ATM
 #include <WS2atm.h>
-#endif
-
-#if !defined( NOATALK ) && _HAS_INCLUDE(<atalkwsh.h>)
-#define _HAS_APPLETALK
-#include <atalkwsh.h>
-#endif
+#include <AF_Irda.h>
 
 #if defined( _WIN32_WINNT_NT4 ) && ( _WIN32_WINNT >=_WIN32_WINNT_NT4 )
 #define WINNT_4_0
@@ -126,15 +87,14 @@
 #endif  //  WINNT_5_0, WINDOWS 2000
 #endif  //  WINNT_4_0, WINDOWS NT
 #endif  //  WINDOWS
-#endif
 
 #elif defined( __linux__ )
 #define OS_LINUX
 
 #include <unistd.h>
-#include <netdb.h>
+#include <errno.h>
 #include <sys/socket.h>
-
+#include <netdb.h>
 #include <netinet/in.h>
 
 #else
@@ -225,6 +185,9 @@ inline int geterror( int _Retval ) noexcept
 #if defined( OS_WINDOWS )
     (_Retval); // Unreferenced in this OS
     return WSAGetLastError();
+#elif defined( OS_LINUX )
+    (_Retval); // Unreferenced in this OS
+    return errno;
 #else
     return _Retval;
 #endif
@@ -232,9 +195,16 @@ inline int geterror( int _Retval ) noexcept
 }
 
 
+_NODISCARD inline bool _Has_flags( int _Combined, int _Flags ) noexcept
+    {   // check if combined flags contain specified values
+    return (((_Combined) & (_Flags)) == (_Flags));
+    }
+
+
+
 // CLASS _Socket_error_category
 class _Socket_error_category
-    : public std::error_category
+    : public _STD error_category
     {
 public:
     _NODISCARD inline virtual const char* name() const noexcept override
@@ -244,13 +214,11 @@ public:
 
     _NODISCARD inline virtual std::string message( int _Errval ) const override
         {
-        std::string msg = "Unable to retrieve error message";
-
+        _STD string msg = "Unable to retrieve error message";
 #   if defined( OS_WINDOWS )
         // Windows OSes provide FormatMessage function, which translates error messages
         // into human-readable forms.
         char* msg_buffer = nullptr;
-
         ::FormatMessageA(
             FORMAT_MESSAGE_ALLOCATE_BUFFER |
             FORMAT_MESSAGE_FROM_SYSTEM |
@@ -260,15 +228,15 @@ public:
             MAKELANGID( LANG_NEUTRAL, SUBLANG_DEFAULT ),
             (char*)(&msg_buffer), 0,
             nullptr );
-
         if( msg_buffer != nullptr )
             { // Copy obtained message to the output string and free the memory.
             msg.assign( msg_buffer );
             ::LocalFree( msg_buffer );
             }
-
 #   elif defined( OS_LINUX )
-
+        // Linux OSes provide strerror function, which translatess errno messages into
+        // human-readable forms.
+        msg.assign( ::strerror( _Errval ) );
 #   else
 #   error _Socket_error_category::message: Messages not implemented for this OS
 #   endif
@@ -279,9 +247,9 @@ public:
 
 // CLASS socket_exception
 class socket_exception
-    : public std::system_error
+    : public _STD system_error
     {
-typedef std::system_error _MyBase;
+typedef _STD system_error _MyBase;
 
 public:
     inline socket_exception( int _Errval )
@@ -326,100 +294,15 @@ enum class address_family
     unspec              = AF_UNSPEC,        // Unspecified
     local               = AF_UNIX,          // Local to host (pipes, portals)
     decnet              = AF_DECnet,        // DECnet
-#ifdef _HAS_IP
     inet                = AF_INET,          // Internet IP protocol version 4 (IPv4)
     inet6               = AF_INET6,         // Internet IP protocol version 6 (IPv6)
-#endif
-#ifdef _HAS_IRDA
     irda                = AF_IRDA,          // IrDA
-#endif
-#ifdef _HAS_IPX
-    ipx                 = AF_IPX,           // Novell IPX protocols
-#endif
-#ifdef _HAS_ATALK
-    appletalk           = AF_APPLETALK,     // AppleTalk
-#endif
 #if defined( OS_WINDOWS )
-    implink             = AF_IMPLINK,       // ARPANET IMP address
-    pup                 = AF_PUP,           // PUP protocols
-    chaos               = AF_CHAOS,         // MIT CHAOS protocols
-    ns                  = AF_NS,            // XEROX NS protocols
-    iso                 = AF_ISO,           // ISO protocols
-    osi                 = AF_OSI,           // OSI protocols
-    ecma                = AF_ECMA,          // European Computer Manufacturers
-    datakit             = AF_DATAKIT,       // DATAKIT protocols
-    sna                 = AF_SNA,           // IBM SNA
-    dli                 = AF_DLI,           // Direct data link interface
-    lat                 = AF_LAT,           // LAT
-    hylink              = AF_HYLINK,        // NSC Hyperchannel
-    netbios             = AF_NETBIOS,       // NetBIOS-style address
-    voiceview           = AF_VOICEVIEW,     // VoiceView
-    firefox             = AF_FIREFOX,       // FireFox protocols
-    banyan              = AF_BAN,           // Banyan
-    cluster             = AF_CLUSTER,       // Microsoft Wolfpack
-    ieee1284_4          = AF_12844,         // IEEE 1284.4 WG AF
-    netdes              = AF_NETDES,        // Network Designers OSI & gateway
-    x25                 = AF_CCITT,         // Reserved for X.25 project
-    ax25                = AF_CCITT,         // Amateur Radio AX.25
-    rose                = AF_CCITT,         // Amateur Radio X.25 PLP
-#ifdef _HAS_ATM
     atm                 = AF_ATM,           // Native ATM services
-#endif
-#ifdef OS_WINDOWS_XP
-    tcnprocess          = AF_TCNPROCESS,    // 
-    tcnmessage          = AF_TCNMESSAGE,    //
-    iclfxbm             = AF_ICLFXBM,       //
-#ifdef OS_WINDOWS_VISTA
-#ifdef _HAS_BTH
     bluetooth           = AF_BTH,           // Bluetooth RFCOMM/L2CAP protocols
-#endif
-#ifdef OS_WINDOWS_7
-    link                = AF_LINK,          //
-#ifdef OS_WINDOWS_10
-    hyperv              = AF_HYPERV,        //
-#endif // OS_WINDOWS_10
-#endif // OS_WINDOWS_7
-#endif // OS_WINDOWS_VISTA
-#endif // OS_WINDOWS_XP
 #elif defined( OS_LINUX )
-    x25                 = AF_X25,           // Reserved for X.25 project
-    ax25                = AF_AX25,          // Amateur Radio AX.25
-    rose                = AF_ROSE,          // Amateur Radio X.25 PLP
-#ifdef _HAS_ATM
     atm                 = AF_ATMSVC,        // Native ATM services
-    atmpvc              = AF_ATMPVC,        // ATM PVCs
-#endif
-    ieee802154          = AF_IEEE802154,    // IEEE 802154 sockets
-    infiniband          = AF_IB,            // Native InfiniBand address
-    isdn                = AF_ISDN,          // mISDN sockets
-    //xdp                 = AF_XDP,           // XDP sockets
-    nfc                 = AF_NFC,           // NFC sockets
     bluetooth           = AF_BLUETOOTH,     // Bluetooth RFCOMM/L2CAP protocols
-    bridge              = AF_BRIDGE,        // Multiprotocol bridge
-    netlink             = AF_NETLINK,       // 
-    netrom              = AF_NETROM,        // Amateur Radio NET/ROM
-    netbeui             = AF_NETBEUI,       // Reserved for 802.2LLC project
-    security            = AF_SECURITY,      // Security callback pseudo address family
-    key                 = AF_KEY,           // Key management API
-    packet              = AF_PACKET,        // Packet family
-    ash                 = AF_ASH,           // ASH
-    econet              = AF_ECONET,        // Acorn Econet
-    rds                 = AF_RDS,           // RDS sockets
-    pppox               = AF_PPPOX,         // PPPoX sockets
-    wanpipe             = AF_WANPIPE,       // Wanpipe API Sockets
-    llc                 = AF_LLC,           // Linux LLC
-    mpls                = AF_MPLS,          // MPLS
-    can                 = AF_CAN,           // Controller Area Network
-    tipc                = AF_TIPC,          // TIPC sockets
-    iucv                = AF_IUCV,          // IUCV sockets
-    rxrpc               = AF_RXRPC,         // RxRPC sockets
-    phonet              = AF_PHONET,        // Phonet sockets
-    caif                = AF_CAIF,          // CAIF sockets
-    algorithm           = AF_ALG,           // Algorithm sockets
-    vsock               = AF_VSOCK,         // vSockets
-    kcm                 = AF_KCM,           // Kernel Connection Multiplexor
-    //qipcrtr             = AF_QIPCRTR,       // Qualcomm IPC Router
-    //smc                 = AF_SMC            //
 #endif
     };
 
@@ -436,43 +319,65 @@ enum class socket_type
     };
 
 
-#define _PROTO( _FN ) \
-    _FN( unspec ) \
-    _FN( icmp ) \
-    _FN( igmp ) \
-    _FN( ggp ) \
-    _FN( st ) \
-    _FN( tcp ) \
-    _FN( cbt ) \
-    _FN( egp ) \
-    _FN( igp ) \
-    _FN( pup ) \
-    _FN( udp ) \
-    _FN( idp ) \
-    _FN( rdp ) \
-    _FN( auth )
-    
-#define _PROTO_ENUM_ELEMENT_DECL( proto ) proto,
+// RAW socket protocol initializer
+enum _Raw_proto { _Raw };
 
-// ENUM CLASS protocol
-enum class protocol
+
+// CLASS protocol
+class protocol
     {
-    unknown = -1,
-    _PROTO( _PROTO_ENUM_ELEMENT_DECL )
+public:
+    inline protocol( const char* _Name )
+        : _MyId( -1 )
+        {   // construct protocol wrapper from IANA name
+        _LIBSOCK_CHECK_ARG_NOT_NULL( _Name );
+        protoent _Proto_ent = _Get_protocol_from_name( _Name );
+        _MyId = static_cast<int>(_Proto_ent.p_proto);
+        }
+
+    inline protocol( _STD _Uninitialized ) noexcept
+        : _MyId( -1 )
+        {   // construct uninitialized (unknown) protocol wrapper
+        }
+
+    inline protocol( _Raw_proto ) noexcept
+        : _MyId( 0 )
+        {   // construct raw (no) protocol wrapper
+        }
+
+    _NODISCARD inline int get_id() const
+        {   // get protocol id
+        return _MyId;
+        }
+
+    _NODISCARD inline explicit operator int() const
+        {   // cast protocol into INT value
+        return get_id();
+        }
+
+protected:
+    int _MyId;
+
+    _NODISCARD inline protoent _Get_protocol_from_name( const char* _Name ) const
+        {   // get protoent structure from IANA name
+        protoent* _Proto_ent = __impl::getprotobyname( _Name );
+        if( _Proto_ent == nullptr )
+            { // protocol not found
+            throw socket_exception( -1, "Unsupported protocol" );
+            }
+        return (*_Proto_ent);
+        }
     };
 
-#define _PROTO_NAME_DECL( proto ) #proto,
-static constexpr const char* _Protocol_name[] =
-    {
-    _PROTO( _PROTO_NAME_DECL )
-    };
 
-#undef _PROTO
-#undef _PROTO_ENUM_ELEMENT_DECL
-#undef _PROTO_NAME_DECL
+_NODISCARD inline protocol unknown_protocol() { return protocol( _STD _Noinit ); }
+_NODISCARD inline protocol raw_protocol() { return protocol( _Raw ); }
+_NODISCARD inline protocol icmp_protocol() { return protocol( "icmp" ); }
+_NODISCARD inline protocol igmp_protocol() { return protocol( "igmp" ); }
+_NODISCARD inline protocol tcp_protocol() { return protocol( "tcp" ); }
+_NODISCARD inline protocol udp_protocol() { return protocol( "udp" ); }
 
 
-#ifdef _HAS_IP
 // ENUM CLASS socket_opt_ip
 enum class socket_opt_ip
     {
@@ -505,20 +410,17 @@ enum class socket_opt_ip
 #error dont_fragment not defined
 #endif
     };
-#endif// _HAS_IP
 
 
 template<typename _SockOptT>
 struct _Socket_opt_level;
 
-#ifdef _HAS_IP
 template<>
 struct _Socket_opt_level<socket_opt_ip>
     { 
     static constexpr int value = IPPROTO_IP;
     static constexpr int value_v6 = IPPROTO_IPV6;
     };
-#endif// _HAS_IP
 
 
 // CLASS socket
@@ -541,13 +443,16 @@ public:
         this->_MyHandle = _Throw_if_failed( __impl::socket(
             static_cast<int>(_Family),
             static_cast<int>(_Type),
-            _Get_platform_protocol_id( _Protocol ) ) );
+            static_cast<int>(_Protocol) ) );
         }
 
     inline virtual ~socket() noexcept
         {   // destroy socket object
         __impl::closesocket( this->_MyHandle );
         this->_MyHandle = _Invalid_socket;
+        this->_MyAddr_family = address_family::unknown;
+        this->_MyType = socket_type::unknown;
+        this->_MyProtocol = unknown_protocol();
         }
 
     template<typename _SockOptT>
@@ -699,7 +604,7 @@ protected:
         : _MyHandle( _Handle )
         , _MyAddr_family( address_family::unknown )
         , _MyType( socket_type::unknown )
-        , _MyProtocol( protocol::unknown )
+        , _MyProtocol( unknown_protocol() )
         {   // construct socket object from existing handle
         }
 
@@ -721,30 +626,11 @@ protected:
         }
 
 private:
-    _NODISCARD inline static int _Get_platform_protocol_id( protocol _Protocol )
-        {   // get protocol number from system database
-        size_t protocol_offset = static_cast<size_t>(_Protocol);
-        if( protocol_offset >= std::extent<decltype(_Protocol_name)>::value )
-            { // protocol argument invalid (out of range)
-            throw socket_exception( -1, "Invalid protocol" );
-            }
-        protoent* proto = __impl::getprotobyname( _Protocol_name[protocol_offset] );
-        if( proto == nullptr )
-            { // protocol is not supported
-            throw socket_exception( -1, "Unsupported protocol" );
-            }
-        return static_cast<int>(proto->p_proto);
-        }
-
-    _NODISCARD inline static bool _Has_flags( int _Combined, int _Flags ) noexcept
-        {   // check if combined flags contain specified values
-        return (((_Combined) & (_Flags)) == (_Flags));
-        }
-
     inline virtual void _Set_socket_opt( int _Opt, int _Opt_level, const void* _Optval, size_t _Optlen )
         {   // set socket option value
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
         _LIBSOCK_CHECK_ARG_NOT_EQ( _Optlen, 0 );
+        _Adjust_socket_opt_level( _Opt_level );
         _Throw_if_failed( __impl::setsockopt( this->_MyHandle,
             _Opt_level, _Opt,
             reinterpret_cast<const _Sockopt_data_t*>(_Optval),
@@ -756,12 +642,7 @@ private:
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optlen );
         _LIBSOCK_CHECK_ARG_NOT_EQ( *_Optlen, 0 );
-#   ifdef _HAS_IP
-        if( _Opt_level == _Socket_opt_level<socket_opt_ip>::value && _MyAddr_family == address_family::inet6 )
-            { // _Socket_opt_level for IP has additional value for IPv6
-            _Opt_level = _Socket_opt_level<socket_opt_ip>::value_v6;
-            }
-#   endif
+        _Adjust_socket_opt_level( _Opt_level );
         _Sock_size_t optlen = _Static_optional_or_default<_Sock_size_t>( _Optlen, 0 );
         _Throw_if_failed( __impl::getsockopt( this->_MyHandle,
             _Opt_level, _Opt,
@@ -769,6 +650,14 @@ private:
             reinterpret_cast<_Sock_size_t*>(_Optlen ? &optlen : nullptr) ) );
         if( _Optlen != nullptr )
             (*_Optlen) = static_cast<size_t>(optlen);
+        }
+
+    inline virtual void _Adjust_socket_opt_level( int& _Opt_level ) const noexcept
+        {   // adjust socket option level to socket's address family
+        if( _Opt_level == _Socket_opt_level<socket_opt_ip>::value && _MyAddr_family == address_family::inet6 )
+            { // _Socket_opt_level for IP has additional value for IPv6
+            _Opt_level = _Socket_opt_level<socket_opt_ip>::value_v6;
+            }
         }
 
 private: // platform-dependent shutdown values
@@ -785,26 +674,35 @@ private: // platform-dependent shutdown values
 #endif
     };
 
-#ifdef _HAS_IP
+
 template<>
 inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
     {   // get socket ip option value
 #if defined( OS_LINUX )
     if( _Opt == socket_opt_ip::dont_fragment )
-        {
-        _Opt = socket_opt_ip::mtu_discover;
+        {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
+        if( (!_Optlen) || (*_Optlen) != sizeof( long ) )
+            throw std::invalid_argument( "dont_fragment option requires LONG argument" );
+        long value = 0;
+        _Get_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
+            &value, _Optlen );
+        if( _Optval != nullptr )
+            *reinterpret_cast<long*>(_Optval) = (value == IP_PMTUDISC_DONT) ? 0 : 1;
         }
 #endif// OS_LINUX
     return _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
         _Optval, _Optlen );
     }
 
+
 template<>
 inline void socket::set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Optlen )
     {   // set socket ip option value
 #if defined( OS_LINUX )
     if( _Opt == socket_opt_ip::dont_fragment )
-        {   // Linux OSes set DF flag via mtu MTU_DISCOVER settings
+        {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
+        if( _Optlen != sizeof( long ) )
+            throw std::invalid_argument( "dont_fragment option requires LONG argument" );
         long value = _Reinterpret_optional_or_default( _Optval, 0 );
         value = (value != 0) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
         return _Set_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
@@ -814,7 +712,6 @@ inline void socket::set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Op
     return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
         _Optval, _Optlen );
     }
-#endif
 
 }// libsock
 
