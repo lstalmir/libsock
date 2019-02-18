@@ -450,16 +450,16 @@ enum class socket_opt_ip
     packet_info         = IP_PKTINFO,
 #if defined( OS_WINDOWS )
     dont_fragment       = IP_DONTFRAGMENT,
-#error mtu not defined
-#error mtu_discover not defined
+#if defined IP_MTU
+    mtu                 = IP_MTU,
+    mtu_discover        = IP_MTU_DISCOVER,
+#endif
 #elif defined( OS_LINUX )
     dont_fragment       = 0x7f000001, // use special value to fallback to MTU_DISCOVER
     mtu                 = IP_MTU,
     mtu_discover        = IP_MTU_DISCOVER,
 #else
 #error dont_fragment not defined
-#error mtu not defined
-#error mtu_discover not defined
 #endif
     };
 
@@ -472,6 +472,9 @@ struct _Socket_opt_level<socket_opt_ip>
     { static constexpr int value = IPPROTO_IP; };
 
 
+//#define _Invoke_socket_func( FUNC, ... ) (FUNC(this->_MyHandle,__VA_ARGS__))
+
+
 // CLASS socket
 class socket
     {
@@ -482,16 +485,15 @@ public:
         , _MyType( _Type )
         , _MyProtocol( _Protocol )
         {   // construct socket object
-        this->_MyHandle = _LIBSOCK __impl::socket(
+        this->_MyHandle = _Throw_if_failed( __impl::socket(
             static_cast<int>(_Family),
             static_cast<int>(_Type),
-            _Get_platform_protocol_id( _Protocol ) );
-        _Throw_if_failed( (int)(this->_MyHandle) );
+            _Get_platform_protocol_id( _Protocol ) ) );
         }
 
     inline virtual ~socket() noexcept
         {   // destroy socket object
-        _Invoke_socket_func_nothrow( _LIBSOCK __impl::closesocket );
+        __impl::closesocket( this->_MyHandle );
         this->_MyHandle = _Invalid_socket;
         }
 
@@ -513,42 +515,42 @@ public:
         {   // send message to the remote host
         if( _ByteSize == 0 ) return 0;
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Data );
-        return (int)_Invoke_socket_func( _LIBSOCK __impl::send,
+        return _Throw_if_failed( (int)__impl::send( this->_MyHandle,
             reinterpret_cast<const _Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
-            _Flags );
+            _Flags ) );
         }
 
     inline virtual int recv( void* _Data, size_t _ByteSize, int _Flags = 0 )
         {   // receive message from the remote host
         if( _ByteSize == 0 ) return 0;
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Data );
-        return (int)_Invoke_socket_func( _LIBSOCK __impl::recv,
+        return _Throw_if_failed( (int)__impl::recv( this->_MyHandle,
             reinterpret_cast<_Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
-            _Flags );
+            _Flags ) );
         }
 
     template<typename _SockAddrTy>
     inline void bind( const _SockAddrTy* _Addr, size_t _Addrlen )
         {   // bind socket to the network interface
-        _Invoke_socket_func( _LIBSOCK __impl::bind,
+        _Throw_if_failed( __impl::bind( this->_MyHandle,
             reinterpret_cast<const sockaddr*>(_Addr),
-            static_cast<_Sock_size_t>(_Addrlen) );
+            static_cast<_Sock_size_t>(_Addrlen) ) );
         }
 
     inline void listen( size_t _QueueLength = SOMAXCONN )
         {   // start listening for incoming connections
-        _Invoke_socket_func( _LIBSOCK __impl::listen,
-            static_cast<int>(_QueueLength) );
+        _Throw_if_failed( __impl::listen( this->_MyHandle,
+            static_cast<int>(_QueueLength) ) );
         }
 
     template<typename _SockAddrTy>
     inline void connect( const _SockAddrTy* _Addr, size_t _Addrlen )
         {   // connect to the remote host
-        _Invoke_socket_func( _LIBSOCK __impl::connect,
+        _Throw_if_failed( __impl::connect( this->_MyHandle,
             reinterpret_cast<const sockaddr*>(_Addr),
-            static_cast<_Sock_size_t>(_Addrlen) );
+            static_cast<_Sock_size_t>(_Addrlen) ) );
         }
 
     _NODISCARD inline socket accept()
@@ -559,13 +561,17 @@ public:
     template<typename _SockAddrTy>
     _NODISCARD inline socket accept( _SockAddrTy* _Addr, size_t* _Addrlen )
         {   // accept incoming connection from the client
+        // Length of _Addrlen value may differ, change it to platform-dependent
+        // for the call and then cast it to size_t.
         _Sock_size_t addrlen = _Static_optional_or_default<_Sock_size_t>( _Addrlen, 0 );
-        socket accepted = _Invoke_socket_func( _LIBSOCK __impl::accept,
+        _Socket_handle _Accepted_handle = _Throw_if_failed( __impl::accept( this->_MyHandle,
             reinterpret_cast<sockaddr*>(_Addr),
-            (_Addrlen) ? &addrlen : nullptr );
+            reinterpret_cast<_Sock_size_t*>((_Addrlen) ? &addrlen : nullptr) ) );
         if( _Addrlen != nullptr )
+            { // Pass retrieved addrlen to the actual output parameter
             (*_Addrlen) = static_cast<size_t>(addrlen);
-        return accepted;
+            }
+        return socket( static_cast<_Socket_handle>(_Accepted_handle) );
         }
 
 public:
@@ -632,46 +638,21 @@ protected:
         {   // construct socket object from existing handle
         }
 
-    inline bool _Is_stream_socket() const noexcept
+    _NODISCARD inline bool _Is_stream_socket() const noexcept
         {   // checks if the socket is reliable, stream one
         return (this->_MyType == socket_type::stream)
             || (this->_MyType == socket_type::seqpacket);
         }
 
-    template<typename _Rx, typename... _Ax>
-    inline _Rx _Invoke_socket_func( _Rx(*_Func)(_Socket_handle, _Ax...), _Ax... _Args ) const
-        {   // invoke socket function and raise exception on error
-        if _CONSTEXPRIF( std::is_void<_Rx>::value )
-            { // function does not return any value
-            _Func( this->_MyHandle, _Args... );
-            }
-        else
-            { // function has non-void return value type
-            _Rx result = _Func( this->_MyHandle, _Args... );
-            _Throw_if_failed( (int)(result) );
-            return result;
-            }
-        }
-
-    template<typename _Rx, typename... _Ax>
-    inline _Rx _Invoke_socket_func_nothrow( _Rx(*_Func)(_Socket_handle, _Ax...), _Ax... _Args ) const noexcept
-        {   // invoke socket function without raising exception on error
-        if _CONSTEXPRIF( std::is_void<_Rx>::value )
-            { // function does not return any value
-            _Func( this->_MyHandle, _Args... );
-            }
-        else
-            { // function has non-void return value type
-            return _Func( this->_MyHandle, _Args... );
-            }
-        }
-
-    inline void _Throw_if_failed( int _Retval ) const
+    template<typename _Ty>
+    inline _Ty& _Throw_if_failed( _Ty&& _Retval ) const
         {   // throw exception if _Retval indicates error
-        if( _Retval < 0 )
+        if( reinterpret_cast<const int&>(_Retval) < 0 )
             { // assume that all negative return values indicate error
-            throw socket_exception( _LIBSOCK __impl::geterror( _Retval ) );
+            throw socket_exception( __impl::geterror(
+                static_cast<int>(_Retval) ) );
             }
+        return _Retval;
         }
 
 private:
@@ -694,10 +675,10 @@ private:
         {   // set socket option value
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optval );
         _LIBSOCK_CHECK_ARG_NOT_EQ( _Optlen, 0 );
-        _Invoke_socket_func( _LIBSOCK __impl::setsockopt,
+        _Throw_if_failed( __impl::setsockopt( this->_MyHandle,
             _Opt_level, _Opt,
             reinterpret_cast<const _Sockopt_data_t*>(_Optval),
-            static_cast<_Sock_size_t>(_Optlen) );
+            static_cast<_Sock_size_t>(_Optlen) ) );
         }
 
     inline virtual void _Get_socket_opt( int _Opt, int _Opt_level, void* _Optval, size_t* _Optlen ) const
@@ -706,10 +687,10 @@ private:
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Optlen );
         _LIBSOCK_CHECK_ARG_NOT_EQ( *_Optlen, 0 );
         _Sock_size_t optlen = _Static_optional_or_default<_Sock_size_t>( _Optlen, 0 );
-        _Invoke_socket_func( _LIBSOCK __impl::getsockopt,
+        _Throw_if_failed( __impl::getsockopt( this->_MyHandle,
             _Opt_level, _Opt,
             reinterpret_cast<_Sockopt_data_t*>(_Optval),
-            _Optlen ? &optlen : nullptr );
+            reinterpret_cast<_Sock_size_t*>(_Optlen ? &optlen : nullptr) ) );
         if( _Optlen != nullptr )
             (*_Optlen) = static_cast<size_t>(optlen);
         }
