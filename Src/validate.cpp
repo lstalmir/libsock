@@ -10,6 +10,13 @@ using namespace libsock;
 #include <thread>
 using namespace std;
 
+#ifndef _TRY_BEGIN
+#define _TRY_BEGIN try {
+#define _CATCH(X) } catch( X ) {
+#define _CATCH_ALL } catch(...) {
+#define _CATCH_END }
+#endif
+
 
 char g_recv_buffer[128];
 int g_recv_byte_count;

@@ -3,6 +3,7 @@
 #define __libsock_h_
 #ifndef RC_INVOKED
 #include <memory>
+#include <exception>
 #include <system_error>
 
 #ifndef _CONSTEXPRIF
@@ -858,7 +859,7 @@ public:
         {   // send message through socket stream
         if( !_Is_stream_socket() )
             { // the socket is not stream-like
-            throw std::exception( "Cannot use stream operations on non-stream socket" );
+            throw std::runtime_error( "Cannot use stream operations on non-stream socket" );
             }
         if( send( &_Data, sizeof( _Ty ) ) != static_cast<int>(sizeof( _Ty )) )
             { // send failed without raising errors?
@@ -872,7 +873,7 @@ public:
         {   // receive message through socket stream
         if( !_Is_stream_socket() )
             { // the socket is not stream-like
-            throw std::exception( "Cannot use stream operations on non-stream socket" );
+            throw std::runtime_error( "Cannot use stream operations on non-stream socket" );
             }
         if( recv( &_Data, sizeof( _Ty ) ) != static_cast<int>(sizeof( _Ty )) )
             { // recv failed without raising errors?

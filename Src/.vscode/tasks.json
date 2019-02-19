@@ -1,18 +1,16 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558
-    // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
         {
             "label": "build",
             "type": "shell",
-            "command": "g++ validate.cpp -o libsock",
+            "command": "g++ -pthread validate.cpp -o libsock",
             "problemMatcher": []
         },
         {
             "label": "build-dbg",
             "type": "shell",
-            "command": "g++ validate.cpp -O0 -ggdb -o libsock",
+            "command": "g++ -pthread validate.cpp -O0 -ggdb -o libsock",
             "problemMatcher": []
         }
     ]
