@@ -597,7 +597,21 @@ public:
         socket_address_family _Family,
         socket_type _Type,
         socket_protocol _Protocol,
-        std::string _Canonname = "",
+        _Socket_address_flags_helper _Flags = _Socket_address_flags_helper( 0 ) )
+        : flags( _Flags )
+        , family( _Family )
+        , socktype( _Type )
+        , protocol( _Protocol )
+        , canonname( "" )
+        , addr( nullptr )
+        {   // construct socket address info hints structure
+        }
+
+    inline socket_address_info(
+        socket_address_family _Family,
+        socket_type _Type,
+        socket_protocol _Protocol,
+        std::string _Canonname,
         _Socket_address_flags_helper _Flags = _Socket_address_flags_helper( 0 ) )
         : flags( _Flags )
         , family( _Family )
@@ -649,11 +663,16 @@ private:
     };
 
 
-_NODISCARD inline socket_address_info get_socket_address_info( const std::string& _Svc_name, const socket_address_info& _Hints )
+_NODISCARD inline socket_address_info get_socket_address_info(
+    const std::string& _Hostname,
+    const std::string& _Svc_name,
+    const socket_address_info& _Hints )
     {   // get socket address info using provided hints
     addrinfo* _addrinfo;
     addrinfo _hints = _Hints.get_addrinfo();
-    if( __impl::getaddrinfo( nullptr, _Svc_name.c_str(), &_hints, &_addrinfo ) != 0 )
+    const char* _pNodeName = !_Hostname.empty() ? _Hostname.c_str() : nullptr;
+    const char* _pSvcName = !_Svc_name.empty() ? _Svc_name.c_str() : nullptr;
+    if( __impl::getaddrinfo( _pNodeName, _pSvcName, &_hints, &_addrinfo ) != 0 )
         { // call to getaddrinfo failed
         throw socket_exception( -1 );
         }
@@ -768,11 +787,11 @@ public:
             static_cast<_Sock_size_t>(_Addrlen) ) );
         }
 
-    inline void bind( const _Socket_address_base& _Addrinfo )
+    inline void bind( const _Socket_address_base& _Addr )
         {   // bind socket to the network interface
         return bind(
-            _Addrinfo.get_native_sockaddr(),
-            _Addrinfo.get_native_sockaddr_size() );
+            _Addr.get_native_sockaddr(),
+            _Addr.get_native_sockaddr_size() );
         }
 
     inline void listen( size_t _QueueLength = SOMAXCONN )
@@ -787,6 +806,13 @@ public:
         _Throw_if_failed( __impl::connect( this->_MyHandle,
             reinterpret_cast<const sockaddr*>(_Addr),
             static_cast<_Sock_size_t>(_Addrlen) ) );
+        }
+
+    inline void connect( const _Socket_address_base& _Addr )
+        {   // connect to the remote host
+        return connect(
+            _Addr.get_native_sockaddr(),
+            _Addr.get_native_sockaddr_size() );
         }
 
     _NODISCARD inline socket accept()
@@ -807,7 +833,11 @@ public:
             { // Pass retrieved addrlen to the actual output parameter
             (*_Addrlen) = static_cast<size_t>(addrlen);
             }
-        return socket( static_cast<_Socket_handle>(_Accepted_handle) );
+        socket _Sock( static_cast<_Socket_handle>(_Accepted_handle) );
+        _Sock._MyAddr_family = this->_MyAddr_family;
+        _Sock._MyType = this->_MyType;
+        _Sock._MyProtocol = this->_MyProtocol;
+        return _Sock;
         }
 
     inline void shutdown( int _Flags = socket::_inout )
