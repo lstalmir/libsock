@@ -22,15 +22,12 @@
 #include <sdkddkver.h>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
-#include <WS2bth.h>
-#include <WS2atm.h>
-#include <AF_Irda.h>
-#include <afunix.h>
 
 #elif defined( __linux__ )
 #define OS_LINUX
 #include <unistd.h>
 #include <errno.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -67,6 +64,84 @@ inline _Ty _Static_optional_or_default( const _Ty2* _Optional, _Ty _Default )
     }
 
 
+// CLASS TEMPLATE _Socket_flags_helper
+template<typename _FlagTy, typename _StorageTy>
+class _Socket_flags_helper
+    {
+public:
+    typedef _StorageTy storage_type;
+    typedef _FlagTy flag_type;
+
+    inline _Socket_flags_helper() noexcept
+        : _MyValue( 0 )
+        {   // construct empty flags helper
+        }
+
+    inline _Socket_flags_helper( flag_type _Flag ) noexcept
+        : _MyValue( static_cast<storage_type>(_Flag) )
+        {   // construct flags helper from single flag
+        }
+
+    inline explicit _Socket_flags_helper( storage_type _Value ) noexcept
+        : _MyValue( _Value )
+        {   // construct from storage value
+        }
+
+    _NODISCARD inline _Socket_flags_helper operator|( const _Socket_flags_helper& _Right ) const noexcept
+        {   // set flags
+        return _Socket_flags_helper( this->_MyValue | _Right._MyValue );
+        }
+
+    inline _Socket_flags_helper& operator|=( const _Socket_flags_helper& _Right ) noexcept
+        {   // set flags
+        this->_MyValue |= _Right._MyValue;
+        return (*this);
+        }
+
+    _NODISCARD inline _Socket_flags_helper operator&( const _Socket_flags_helper& _Right ) const noexcept
+        {   // filter flags
+        return _Socket_flags_helper( this->_MyValue & _Right._MyValue );
+        }
+
+    inline _Socket_flags_helper& operator&=( const _Socket_flags_helper& _Right ) noexcept
+        {   // filter flags
+        this->_MyValue &= _Right._MyValue;
+        return (*this);
+        }
+
+    _NODISCARD inline bool operator==( const _Socket_flags_helper& _Right ) const noexcept
+        {   // compare flags
+        return this->_MyValue == _Right._MyValue;
+        }
+
+    _NODISCARD inline bool operator!=( const _Socket_flags_helper& _Right ) const noexcept
+        {   // compare flags
+        return !this->operator==( _Right );
+        }
+
+    _NODISCARD inline explicit operator const storage_type() const noexcept
+        {   // cast flags into storage type
+        return this->_MyValue;
+        }
+
+protected:
+    storage_type _MyValue;
+    };
+
+
+template<typename _FlagTy, typename _StorageTy>
+_NODISCARD _Socket_flags_helper<_FlagTy, _StorageTy> operator|( _FlagTy _Flag, const _Socket_flags_helper<_FlagTy, _StorageTy>& _Flags ) noexcept
+    {   // combine single flag with multiple flags under _Socket_flags_helper
+    return _Flags | _Flag;
+    }
+
+template<typename _FlagTy, typename _StorageTy>
+_NODISCARD _Socket_flags_helper<_FlagTy, _StorageTy> operator&( _FlagTy _Flag, const _Socket_flags_helper<_FlagTy, _StorageTy>& _Flags ) noexcept
+    {   // filter single flag with multiple flags under _Socket_flags_helper
+    return _Flags & _Flag;
+    }
+
+
 #if defined( OS_WINDOWS )
 typedef SOCKET _Socket_handle;
 typedef int _Sock_size_t;
@@ -75,12 +150,8 @@ typedef char _Sockcomm_data_t;
 typedef char _Sockopt_data_t;
 constexpr _Socket_handle _Invalid_socket = INVALID_SOCKET;
 
-typedef SOCKADDR_ATM _Sockaddr_atm;
-typedef SOCKADDR_BTH _Sockaddr_bluetooth;
 typedef SOCKADDR_IN _Sockaddr_inet;
 typedef SOCKADDR_IN6 _Sockaddr_inet6;
-typedef SOCKADDR_IRDA _Sockaddr_irda;
-typedef SOCKADDR_UN _Sockaddr_local;
 
 #elif defined( OS_LINUX )
 typedef int _Socket_handle;
@@ -90,8 +161,11 @@ typedef void _Sockcomm_data_t;
 typedef void _Sockopt_data_t;
 constexpr _Socket_handle _Invalid_socket = -1;
 
+typedef sockaddr_in _Sockaddr_inet;
+typedef sockaddr_in6 _Sockaddr_inet6;
+
 #else
-#error _Socket_handle not defined for this OS
+#error socket types not defined for this OS
 #endif
 
 namespace __impl
@@ -150,7 +224,7 @@ _NODISCARD inline bool _Has_flags( int _Combined, int _Flags ) noexcept
 
 // CLASS _Socket_error_category
 class _Socket_error_category
-    : public _STD error_category
+    : public std::error_category
     {
 public:
     _NODISCARD inline virtual const char* name() const noexcept override
@@ -160,7 +234,7 @@ public:
 
     _NODISCARD inline virtual std::string message( int _Errval ) const override
         {
-        _STD string msg = "Unable to retrieve error message";
+        std::string msg = "Unable to retrieve error message";
 #   if defined( OS_WINDOWS )
         // Windows OSes provide FormatMessage function, which translates error messages
         // into human-readable forms.
@@ -193,9 +267,9 @@ public:
 
 // CLASS socket_exception
 class socket_exception
-    : public _STD system_error
+    : public std::system_error
     {
-typedef _STD system_error _MyBase;
+    typedef std::system_error _MyBase;
 
 public:
     inline socket_exception( int _Errval )
@@ -273,7 +347,7 @@ class socket_protocol
     {
 public:
     inline socket_protocol()
-        : socket_protocol( _STD _Noinit )
+        : _MyId( -1 )
         {   // construct uninitialized (unknown) protocol wrapper
         }
 
@@ -288,11 +362,6 @@ public:
     inline socket_protocol( int _Id ) noexcept
         : _MyId( _Id )
         {   // construct protocol wrapper from IANA id
-        }
-
-    inline socket_protocol( _STD _Uninitialized ) noexcept
-        : _MyId( -1 )
-        {   // construct uninitialized (unknown) protocol wrapper
         }
 
     inline socket_protocol( _Raw_proto ) noexcept
@@ -325,7 +394,7 @@ protected:
     };
 
 
-_NODISCARD inline socket_protocol unknown_socket_protocol() { return socket_protocol( _STD _Noinit ); }
+_NODISCARD inline socket_protocol unknown_socket_protocol() { return socket_protocol(); }
 _NODISCARD inline socket_protocol raw_socket_protocol() { return socket_protocol( _Raw ); }
 _NODISCARD inline socket_protocol icmp_socket_protocol() { return socket_protocol( "icmp" ); }
 _NODISCARD inline socket_protocol igmp_socket_protocol() { return socket_protocol( "igmp" ); }
@@ -344,7 +413,7 @@ enum class socket_opt
     reuse_addr          = SO_REUSEADDR,     // allow local address reuse
     keep_alive          = SO_KEEPALIVE,     // keep connections alive
     broadcast           = SO_BROADCAST,     // permit sending of broadcast messages
-    loopback            = SO_USELOOPBACK,   // bypass hardware when possible
+    //loopback            = SO_USELOOPBACK,   // bypass hardware when possible
     };
 
 template<>
@@ -433,11 +502,6 @@ public:
         {   // construct uninitialized socket address wrapper
         }
 
-    inline socket_address( _STD _Uninitialized ) noexcept
-        : _Socket_address_base( _Family )
-        {   // construct uninitialized socket address wrapper
-        }
-
     inline socket_address( const _SockAddrTy* _Sockaddr ) noexcept
         : _Socket_address_base( _Family ), _MySockaddr()
         {   // construct socket address wrapper
@@ -460,70 +524,76 @@ protected:
     };
 
 
-using socket_address_atm = socket_address<socket_address_family::atm, _Sockaddr_atm>;
-using socket_address_bluetooth = socket_address<socket_address_family::bluetooth, _Sockaddr_bluetooth>;
 using socket_address_inet = socket_address<socket_address_family::inet, _Sockaddr_inet>;
 using socket_address_inet6 = socket_address<socket_address_family::inet6, _Sockaddr_inet6>;
-using socket_address_irda = socket_address<socket_address_family::irda, _Sockaddr_irda>;
-using socket_address_local = socket_address<socket_address_family::local, _Sockaddr_local>;
 
 
-_NODISCARD inline _STD shared_ptr<_Socket_address_base> _Create_socket_address( socket_address_family _Family, const sockaddr* _Sockaddr )
+_NODISCARD inline std::shared_ptr<_Socket_address_base> _Create_socket_address( socket_address_family _Family, const sockaddr* _Sockaddr )
     {   // construct socket_address structure based on the family
     // Helper macro for socket_address structure creation
 #   define _CASE_ADDRESS_FAMILY(AF) \
     case socket_address_family::AF: \
         { \
-        return _STD make_shared<socket_address_##AF>( reinterpret_cast<const _Sockaddr_##AF*>(_Sockaddr) ); \
+        return std::make_shared<socket_address_##AF>( reinterpret_cast<const _Sockaddr_##AF*>(_Sockaddr) ); \
         }
     switch( _Family )
         {
-        _CASE_ADDRESS_FAMILY( atm );
-        _CASE_ADDRESS_FAMILY( bluetooth );
         _CASE_ADDRESS_FAMILY( inet );
         _CASE_ADDRESS_FAMILY( inet6 );
-        _CASE_ADDRESS_FAMILY( irda );
-        _CASE_ADDRESS_FAMILY( local );
         }
 #   undef _CASE_ADDRESS_FAMILY
     throw socket_exception( -1, "address family not supported" );
     }
 
 
+// ENUM CLASS socket_address_flags
+enum class socket_address_flags
+    {
+    passive             = AI_PASSIVE,
+    };
+
+using _Socket_address_flags_helper = _Socket_flags_helper<socket_address_flags, int>;
+
+_NODISCARD _Socket_address_flags_helper operator|( socket_address_flags _1, socket_address_flags _2 ) noexcept
+    {   // construct socket address flags helper from two flags
+    return _Socket_address_flags_helper( _1 ) | _2;
+    }
+
+
 // STRUCT socket_address_info
 struct socket_address_info
     {
-    int flags;
+    _Socket_address_flags_helper flags;
     socket_address_family family;
     socket_type socktype;
     socket_protocol protocol;
-    _STD shared_ptr<_Socket_address_base> addr;
+    std::shared_ptr<_Socket_address_base> addr;
     };
 
 
-_NODISCARD inline socket_address_info get_socket_address_info( const char* _Svc_name, const socket_address_info& _Hints )
+_NODISCARD inline socket_address_info get_socket_address_info( const std::string& _Svc_name, const socket_address_info& _Hints )
     {   // get socket address info using provided hints
 
     addrinfo _hints = { 0 }, * _addrinfo;
     _hints.ai_family = static_cast<int>(_Hints.family);
     _hints.ai_socktype = static_cast<int>(_Hints.socktype);
     _hints.ai_protocol = static_cast<int>(_Hints.protocol);
-    _hints.ai_flags = _Hints.flags;
+    _hints.ai_flags = static_cast<int>(_Hints.flags);
 
-    if( __impl::getaddrinfo( nullptr, _Svc_name, &_hints, &_addrinfo ) != 0 )
+    if( __impl::getaddrinfo( nullptr, _Svc_name.c_str(), &_hints, &_addrinfo ) != 0 )
         { // call to getaddrinfo failed
         throw socket_exception( -1 );
         }
 
     // pass retrieved pointer to shared_ptr for automatic memory management
-    _STD shared_ptr<addrinfo> _addrinfo_sp( _addrinfo, __impl::freeaddrinfo );
+    std::shared_ptr<addrinfo> _addrinfo_sp( _addrinfo, __impl::freeaddrinfo );
 
     // construct output structure
-    socket_address_info result = { 0 };
+    socket_address_info result = {};
     result.family = static_cast<socket_address_family>(_addrinfo_sp->ai_family);
     result.socktype = static_cast<socket_type>(_addrinfo_sp->ai_socktype);
     result.protocol = static_cast<int>(_addrinfo_sp->ai_protocol);
-    result.flags = _addrinfo_sp->ai_flags;
+    result.flags = _Socket_address_flags_helper( _addrinfo_sp->ai_flags );
     result.addr = _Create_socket_address( result.family, _addrinfo_sp->ai_addr );
 
     return result;
