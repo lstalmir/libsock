@@ -1,3 +1,4 @@
+#pragma once
 #ifndef __libsock_h_
 #define __libsock_h_
 #ifndef RC_INVOKED
@@ -18,7 +19,6 @@
 
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
 #define OS_WINDOWS
-
 #include <sdkddkver.h>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
@@ -28,7 +28,6 @@
 
 #elif defined( __linux__ )
 #define OS_LINUX
-
 #include <unistd.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -120,11 +119,10 @@ inline int closesocket( _Socket_handle _Socket ) noexcept
 
 inline int geterror( int _Retval ) noexcept
     {   // gets last error reported by the sockets API
+    (_Retval);
 #if defined( OS_WINDOWS )
-    (_Retval); // Unreferenced in this OS
     return WSAGetLastError();
 #elif defined( OS_LINUX )
-    (_Retval); // Unreferenced in this OS
     return errno;
 #else
     return _Retval;
@@ -393,38 +391,64 @@ public:
         this->_MyProtocol = unknown_protocol();
         }
 
-    template<typename _SockOptT>
-    inline void set_opt( _SockOptT _Opt, const void* _Optval, size_t _Optlen )
+    template<typename _SockOptTy>
+    inline void set_opt( _SockOptTy _Opt, const void* _Optval, size_t _Optlen )
         {   // set socket option value
-        _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptT>::value,
+        _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptTy>::value,
             _Optval, _Optlen );
         }
 
-    template<typename _SockOptT>
-    inline void get_opt( _SockOptT _Opt, void* _Optval, size_t* _Optlen ) const
+    template<typename _SockOptTy>
+    inline void get_opt( _SockOptTy _Opt, void* _Optval, size_t* _Optlen ) const
         {   // get socket option value
-        _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptT>::value,
+        _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptTy>::value,
             _Optval, _Optlen );
         }
 
     inline virtual int send( const void* _Data, size_t _ByteSize, int _Flags = 0 )
         {   // send message to the remote host
-        if( _ByteSize == 0 ) return 0;
-        _LIBSOCK_CHECK_ARG_NOT_NULL( _Data );
         return _Throw_if_failed( (int)__impl::send( this->_MyHandle,
             reinterpret_cast<const _Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
             _Flags ) );
         }
 
+    template<typename _SockAddrTy>
+    inline int send_to( const void* _Data, size_t _ByteSize, const _SockAddrTy* _Addr, size_t _Addrlen, int _Flags = 0 )
+        {   // send message to the remote host
+        return _Throw_if_failed( (int)__impl::sendto( this->_MyHandle,
+            reinterpret_cast<const _Sockcomm_data_t*>(_Data),
+            static_cast<_Sockcomm_data_size_t>(_ByteSize),
+            _Flags,
+            reinterpret_cast<const sockaddr*>(_Addr),
+            static_cast<_Sock_size_t>(_Addrlen) ) );
+        }
+
     inline virtual int recv( void* _Data, size_t _ByteSize, int _Flags = 0 )
         {   // receive message from the remote host
-        if( _ByteSize == 0 ) return 0;
-        _LIBSOCK_CHECK_ARG_NOT_NULL( _Data );
         return _Throw_if_failed( (int)__impl::recv( this->_MyHandle,
             reinterpret_cast<_Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
             _Flags ) );
+        }
+
+    template<typename _SockAddrTy>
+    inline int recv_from( void* _Data, size_t _ByteSize, _SockAddrTy* _Addr, size_t* _Addrlen, int _Flags = 0 )
+        {   // receive message from the remote host
+        // Length of _Addrlen value may differ, change it to platform-dependent
+        // for the call and then cast it to size_t.
+        _Sock_size_t addrlen = _Static_optional_or_default<_Sock_size_t>( _Addrlen, 0 );
+        int receivedByteCount = _Throw_if_failed( (int)__impl::recvfrom( this->_MyHandle,
+            reinterpret_cast<_Sockcomm_data_t*>(_Data),
+            static_cast<_Sockcomm_data_size_t>(_ByteSize),
+            _Flags,
+            reinterpret_cast<sockaddr*>(_Addr),
+            reinterpret_cast<_Sock_size_t*>((_Addrlen) ? &addrlen : nullptr) ) );
+        if( _Addrlen != nullptr )
+            { // Pass retrieved addrlen to the actual output parameter
+            (*_Addrlen) = static_cast<size_t>(addrlen);
+            }
+        return receivedByteCount;
         }
 
     template<typename _SockAddrTy>
