@@ -91,10 +91,14 @@ _TRY_BEGIN
 _CATCH( socket_exception ex )
     {
     perror( ex.what() );
+    if( g_client_thread.joinable() )
+        g_client_thread.join();
     return ex.code().value();
     }
 _CATCH_ALL
     {
+    if( g_client_thread.joinable() )
+        g_client_thread.join();
     return -4;
     }
 _CATCH_END;

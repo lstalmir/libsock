@@ -199,6 +199,9 @@ using ::freeaddrinfo;
 using ::memcpy;
 using ::memset;
 
+using ::std::swap;
+using ::std::move;
+
 #if defined( OS_WINDOWS )
 using ::closesocket;
 #elif defined( OS_LINUX )
@@ -694,6 +697,16 @@ private:
     static constexpr int _inout = socket::in | socket::out;
 
 public:
+    socket( const socket& ) = delete;
+
+    inline socket()
+        : _MyHandle( _Invalid_socket )
+        , _MyAddr_family( socket_address_family::unknown )
+        , _MyType( socket_type::unknown )
+        , _MyProtocol( unknown_socket_protocol() )
+        {   // construct uninitialized socket
+        }
+
     inline socket( socket_address_family _Family, socket_type _Type, socket_protocol _Protocol )
         : _MyHandle( _Invalid_socket )
         , _MyAddr_family( _Family )
@@ -709,6 +722,15 @@ public:
     inline socket( const socket_address_info& _Addrinfo )
         : socket( _Addrinfo.family, _Addrinfo.socktype, _Addrinfo.protocol )
         {   // construct socket object from addrinfo structure
+        }
+
+    inline socket( socket&& _Original ) noexcept
+        : socket()
+        {   // take ownership of socket object
+        __impl::swap( _MyHandle, _Original._MyHandle );
+        __impl::swap( _MyAddr_family, _Original._MyAddr_family );
+        __impl::swap( _MyType, _Original._MyType );
+        __impl::swap( _MyProtocol, _Original._MyProtocol );
         }
 
     inline virtual ~socket() noexcept
@@ -834,11 +856,8 @@ public:
             { // Pass retrieved addrlen to the actual output parameter
             (*_Addrlen) = static_cast<size_t>(addrlen);
             }
-        socket _Sock( static_cast<_Socket_handle>(_Accepted_handle) );
-        _Sock._MyAddr_family = this->_MyAddr_family;
-        _Sock._MyType = this->_MyType;
-        _Sock._MyProtocol = this->_MyProtocol;
-        return _Sock;
+        return socket( static_cast<_Socket_handle>(_Accepted_handle),
+            this->_MyAddr_family, this->_MyType, this->_MyProtocol );
         }
 
     inline void shutdown( int _Flags = socket::_inout )
@@ -909,11 +928,11 @@ protected:
     socket_type _MyType;
     socket_protocol _MyProtocol;
 
-    inline socket( _Socket_handle _Handle = _Invalid_socket ) noexcept
+    inline socket( _Socket_handle _Handle, socket_address_family _Family, socket_type _Type, socket_protocol _Protocol ) noexcept
         : _MyHandle( _Handle )
-        , _MyAddr_family( socket_address_family::unknown )
-        , _MyType( socket_type::unknown )
-        , _MyProtocol( unknown_socket_protocol() )
+        , _MyAddr_family( _Family )
+        , _MyType( _Type )
+        , _MyProtocol( _Protocol )
         {   // construct socket object from existing handle
         }
 
