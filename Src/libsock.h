@@ -25,6 +25,7 @@
 #include <WS2bth.h>
 #include <WS2atm.h>
 #include <AF_Irda.h>
+#include <afunix.h>
 
 #elif defined( __linux__ )
 #define OS_LINUX
@@ -74,6 +75,13 @@ typedef char _Sockcomm_data_t;
 typedef char _Sockopt_data_t;
 constexpr _Socket_handle _Invalid_socket = INVALID_SOCKET;
 
+typedef SOCKADDR_ATM _Sockaddr_atm;
+typedef SOCKADDR_BTH _Sockaddr_bluetooth;
+typedef SOCKADDR_IN _Sockaddr_inet;
+typedef SOCKADDR_IN6 _Sockaddr_inet6;
+typedef SOCKADDR_IRDA _Sockaddr_irda;
+typedef SOCKADDR_UN _Sockaddr_local;
+
 #elif defined( OS_LINUX )
 typedef int _Socket_handle;
 typedef socklen_t _Sock_size_t;
@@ -103,6 +111,8 @@ using ::sendto;
 using ::recv;
 using ::recvfrom;
 using ::getprotobyname;
+using ::getaddrinfo;
+using ::freeaddrinfo;
 
 #if defined( OS_WINDOWS )
 using ::closesocket;
@@ -224,12 +234,11 @@ public:
 
 
 // ENUM CLASS address_family
-enum class address_family
+enum class socket_address_family
     {
     unknown             = -1,               // Unknown
     unspec              = AF_UNSPEC,        // Unspecified
     local               = AF_UNIX,          // Local to host (pipes, portals)
-    decnet              = AF_DECnet,        // DECnet
     inet                = AF_INET,          // Internet IP protocol version 4 (IPv4)
     inet6               = AF_INET6,         // Internet IP protocol version 6 (IPv6)
     irda                = AF_IRDA,          // IrDA
@@ -260,10 +269,15 @@ enum _Raw_proto { _Raw };
 
 
 // CLASS protocol
-class protocol
+class socket_protocol
     {
 public:
-    inline protocol( const char* _Name )
+    inline socket_protocol()
+        : socket_protocol( _STD _Noinit )
+        {   // construct uninitialized (unknown) protocol wrapper
+        }
+
+    inline socket_protocol( const char* _Name )
         : _MyId( -1 )
         {   // construct protocol wrapper from IANA name
         _LIBSOCK_CHECK_ARG_NOT_NULL( _Name );
@@ -271,12 +285,17 @@ public:
         _MyId = static_cast<int>(_Proto_ent.p_proto);
         }
 
-    inline protocol( _STD _Uninitialized ) noexcept
+    inline socket_protocol( int _Id ) noexcept
+        : _MyId( _Id )
+        {   // construct protocol wrapper from IANA id
+        }
+
+    inline socket_protocol( _STD _Uninitialized ) noexcept
         : _MyId( -1 )
         {   // construct uninitialized (unknown) protocol wrapper
         }
 
-    inline protocol( _Raw_proto ) noexcept
+    inline socket_protocol( _Raw_proto ) noexcept
         : _MyId( 0 )
         {   // construct raw (no) protocol wrapper
         }
@@ -306,12 +325,33 @@ protected:
     };
 
 
-_NODISCARD inline protocol unknown_protocol() { return protocol( _STD _Noinit ); }
-_NODISCARD inline protocol raw_protocol() { return protocol( _Raw ); }
-_NODISCARD inline protocol icmp_protocol() { return protocol( "icmp" ); }
-_NODISCARD inline protocol igmp_protocol() { return protocol( "igmp" ); }
-_NODISCARD inline protocol tcp_protocol() { return protocol( "tcp" ); }
-_NODISCARD inline protocol udp_protocol() { return protocol( "udp" ); }
+_NODISCARD inline socket_protocol unknown_socket_protocol() { return socket_protocol( _STD _Noinit ); }
+_NODISCARD inline socket_protocol raw_socket_protocol() { return socket_protocol( _Raw ); }
+_NODISCARD inline socket_protocol icmp_socket_protocol() { return socket_protocol( "icmp" ); }
+_NODISCARD inline socket_protocol igmp_socket_protocol() { return socket_protocol( "igmp" ); }
+_NODISCARD inline socket_protocol tcp_socket_protocol() { return socket_protocol( "tcp" ); }
+_NODISCARD inline socket_protocol udp_socket_protocol() { return socket_protocol( "udp" ); }
+
+
+template<typename _SockOptT>
+struct _Socket_opt_level;
+
+
+// ENUM CLASS socket_opt
+enum class socket_opt
+    {
+    unknown = -1,
+    reuse_addr          = SO_REUSEADDR,     // allow local address reuse
+    keep_alive          = SO_KEEPALIVE,     // keep connections alive
+    broadcast           = SO_BROADCAST,     // permit sending of broadcast messages
+    loopback            = SO_USELOOPBACK,   // bypass hardware when possible
+    };
+
+template<>
+struct _Socket_opt_level<socket_opt>
+    {
+    static constexpr int value = SOL_SOCKET;
+    };
 
 
 // ENUM CLASS socket_opt_ip
@@ -347,16 +387,147 @@ enum class socket_opt_ip
 #endif
     };
 
-
-template<typename _SockOptT>
-struct _Socket_opt_level;
-
 template<>
 struct _Socket_opt_level<socket_opt_ip>
     { 
     static constexpr int value = IPPROTO_IP;
     static constexpr int value_v6 = IPPROTO_IPV6;
     };
+
+
+// STRUCT _Socket_address_base
+struct _Socket_address_base
+    {
+public:
+    inline _Socket_address_base( socket_address_family _Family ) noexcept
+        : _MyFamily( _Family )
+        {   // construct socket address base instance
+        }
+
+    inline virtual ~_Socket_address_base() noexcept
+        {   // destroy socket address base instance
+        }
+    
+public:
+    _NODISCARD inline socket_address_family get_family() const noexcept
+        {   // get socket address family
+        return this->_MyFamily;
+        }
+
+    _NODISCARD virtual const sockaddr* get_native_sockaddr() const noexcept = 0;
+    _NODISCARD virtual const size_t get_native_sockaddr_size() const noexcept = 0;
+
+protected:
+    socket_address_family _MyFamily;
+    };
+
+
+// STRUCT TEMPLATE socket_address
+template<socket_address_family _Family, typename _SockAddrTy>
+struct socket_address
+    : public _Socket_address_base
+    {
+public:
+    inline socket_address() noexcept
+        : _Socket_address_base( _Family )
+        {   // construct uninitialized socket address wrapper
+        }
+
+    inline socket_address( _STD _Uninitialized ) noexcept
+        : _Socket_address_base( _Family )
+        {   // construct uninitialized socket address wrapper
+        }
+
+    inline socket_address( const _SockAddrTy* _Sockaddr ) noexcept
+        : _Socket_address_base( _Family )
+        {   // construct socket address wrapper
+        if( _Sockaddr != nullptr )
+            _MySockaddr = (*_Sockaddr);
+        }
+
+    _NODISCARD inline virtual const sockaddr* get_native_sockaddr() const noexcept override
+        {   // get native sockaddr structure
+        return reinterpret_cast<const sockaddr*>(&_MySockaddr);
+        }
+
+    _NODISCARD inline virtual const size_t get_native_sockaddr_size() const noexcept override
+        {   // get native sockaddr structure size
+        return sizeof( _MySockaddr );
+        }
+
+protected:
+    mutable _SockAddrTy _MySockaddr;
+    };
+
+
+using socket_address_atm = socket_address<socket_address_family::atm, _Sockaddr_atm>;
+using socket_address_bluetooth = socket_address<socket_address_family::bluetooth, _Sockaddr_bluetooth>;
+using socket_address_inet = socket_address<socket_address_family::inet, _Sockaddr_inet>;
+using socket_address_inet6 = socket_address<socket_address_family::inet6, _Sockaddr_inet6>;
+using socket_address_irda = socket_address<socket_address_family::irda, _Sockaddr_irda>;
+using socket_address_local = socket_address<socket_address_family::local, _Sockaddr_local>;
+
+
+_NODISCARD inline _STD shared_ptr<_Socket_address_base> create_socket_address( socket_address_family _Family, const sockaddr* _Sockaddr )
+    {   // construct socket_address structure based on the family
+    // Helper macro for socket_address structure creation
+#   define _CASE_ADDRESS_FAMILY(AF) \
+    case socket_address_family::AF: \
+        { \
+        return _STD make_shared<socket_address_##AF>( reinterpret_cast<const _Sockaddr_##AF*>(_Sockaddr) ); \
+        }
+    switch( _Family )
+        {
+        _CASE_ADDRESS_FAMILY( atm );
+        _CASE_ADDRESS_FAMILY( bluetooth );
+        _CASE_ADDRESS_FAMILY( inet );
+        _CASE_ADDRESS_FAMILY( inet6 );
+        _CASE_ADDRESS_FAMILY( irda );
+        _CASE_ADDRESS_FAMILY( local );
+        }
+#   undef _CASE_ADDRESS_FAMILY
+    throw socket_exception( -1, "address family not supported" );
+    }
+
+
+// STRUCT socket_address_info
+struct socket_address_info
+    {
+    int flags;
+    socket_address_family family;
+    socket_type socktype;
+    socket_protocol protocol;
+    _STD shared_ptr<_Socket_address_base> addr;
+    };
+
+
+_NODISCARD inline socket_address_info get_socket_address_info( const char* _Svc_name, const socket_address_info& _Hints )
+    {   // get socket address info using provided hints
+
+    addrinfo _hints = { 0 }, * _addrinfo;
+    _hints.ai_family = static_cast<int>(_Hints.family);
+    _hints.ai_socktype = static_cast<int>(_Hints.socktype);
+    _hints.ai_protocol = static_cast<int>(_Hints.protocol);
+    _hints.ai_flags = _Hints.flags;
+
+    if( __impl::getaddrinfo( nullptr, _Svc_name, &_hints, &_addrinfo ) != 0 )
+        { // call to getaddrinfo failed
+        throw socket_exception( -1 );
+        }
+
+    // pass retrieved pointer to shared_ptr for automatic memory management
+    _STD shared_ptr<addrinfo> _addrinfo_sp( _addrinfo, __impl::freeaddrinfo );
+
+    // construct output structure
+    socket_address_info result = { 0 };
+    result.family = static_cast<socket_address_family>(_addrinfo_sp->ai_family);
+    result.socktype = static_cast<socket_type>(_addrinfo_sp->ai_socktype);
+    result.protocol = static_cast<int>(_addrinfo_sp->ai_protocol);
+    result.flags = _addrinfo_sp->ai_flags;
+    result.addr = create_socket_address( result.family, _addrinfo_sp->ai_addr );
+
+    return result;
+    }
 
 
 // CLASS socket
@@ -370,7 +541,7 @@ private:
     static constexpr int _inout = socket::in | socket::out;
 
 public:
-    inline socket( address_family _Family, socket_type _Type, protocol _Protocol )
+    inline socket( socket_address_family _Family, socket_type _Type, socket_protocol _Protocol )
         : _MyHandle( _Invalid_socket )
         , _MyAddr_family( _Family )
         , _MyType( _Type )
@@ -382,13 +553,18 @@ public:
             static_cast<int>(_Protocol) ) );
         }
 
+    inline socket( const socket_address_info& _Addrinfo )
+        : socket( _Addrinfo.family, _Addrinfo.socktype, _Addrinfo.protocol )
+        {   // construct socket object from addrinfo structure
+        }
+
     inline virtual ~socket() noexcept
         {   // destroy socket object
         __impl::closesocket( this->_MyHandle );
         this->_MyHandle = _Invalid_socket;
-        this->_MyAddr_family = address_family::unknown;
+        this->_MyAddr_family = socket_address_family::unknown;
         this->_MyType = socket_type::unknown;
-        this->_MyProtocol = unknown_protocol();
+        this->_MyProtocol = unknown_socket_protocol();
         }
 
     template<typename _SockOptTy>
@@ -457,6 +633,13 @@ public:
         _Throw_if_failed( __impl::bind( this->_MyHandle,
             reinterpret_cast<const sockaddr*>(_Addr),
             static_cast<_Sock_size_t>(_Addrlen) ) );
+        }
+
+    inline void bind( const _Socket_address_base& _Addrinfo )
+        {   // bind socket to the network interface
+        return bind(
+            _Addrinfo.get_native_sockaddr(),
+            _Addrinfo.get_native_sockaddr_size() );
         }
 
     inline void listen( size_t _QueueLength = SOMAXCONN )
@@ -541,7 +724,7 @@ public:
         return this->_MyHandle;
         }
 
-    _NODISCARD inline address_family get_address_family() const noexcept
+    _NODISCARD inline socket_address_family get_address_family() const noexcept
         {   // get socket address family
         return this->_MyAddr_family;
         }
@@ -551,22 +734,22 @@ public:
         return this->_MyType;
         }
 
-    _NODISCARD inline protocol get_protocol() const noexcept
+    _NODISCARD inline socket_protocol get_protocol() const noexcept
         {   // get socket protocol
         return this->_MyProtocol;
         }
 
 protected:
     _Socket_handle _MyHandle;
-    address_family _MyAddr_family;
+    socket_address_family _MyAddr_family;
     socket_type _MyType;
-    protocol _MyProtocol;
+    socket_protocol _MyProtocol;
 
     inline socket( _Socket_handle _Handle = _Invalid_socket ) noexcept
         : _MyHandle( _Handle )
-        , _MyAddr_family( address_family::unknown )
+        , _MyAddr_family( socket_address_family::unknown )
         , _MyType( socket_type::unknown )
-        , _MyProtocol( unknown_protocol() )
+        , _MyProtocol( unknown_socket_protocol() )
         {   // construct socket object from existing handle
         }
 
@@ -616,7 +799,7 @@ private:
 
     inline virtual void _Adjust_socket_opt_level( int& _Opt_level ) const noexcept
         {   // adjust socket option level to socket's address family
-        if( _Opt_level == _Socket_opt_level<socket_opt_ip>::value && _MyAddr_family == address_family::inet6 )
+        if( _Opt_level == _Socket_opt_level<socket_opt_ip>::value && _MyAddr_family == socket_address_family::inet6 )
             { // _Socket_opt_level for IP has additional value for IPv6
             _Opt_level = _Socket_opt_level<socket_opt_ip>::value_v6;
             }
