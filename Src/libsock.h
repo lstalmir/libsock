@@ -63,6 +63,13 @@ inline _Ty _Static_optional_or_default( const _Ty2* _Optional, _Ty _Default )
     return ((_Optional != nullptr) ? static_cast<_Ty>(*_Optional) : _Default);
     }
 
+template<typename _Ty>
+inline void _Array_delete( _Ty _Array[] ) noexcept
+    {   // free array of elements
+    if( _Array != nullptr )
+        delete[] _Array;
+    }
+
 
 // CLASS TEMPLATE _Socket_flags_helper
 template<typename _FlagTy, typename _StorageTy>
@@ -187,6 +194,9 @@ using ::recvfrom;
 using ::getprotobyname;
 using ::getaddrinfo;
 using ::freeaddrinfo;
+
+using ::memcpy;
+using ::memset;
 
 #if defined( OS_WINDOWS )
 using ::closesocket;
@@ -550,6 +560,7 @@ _NODISCARD inline std::shared_ptr<_Socket_address_base> _Create_socket_address( 
 enum class socket_address_flags
     {
     passive             = AI_PASSIVE,
+    canonname           = AI_CANONNAME,
     };
 
 using _Socket_address_flags_helper = _Socket_flags_helper<socket_address_flags, int>;
@@ -560,43 +571,95 @@ _NODISCARD _Socket_address_flags_helper operator|( socket_address_flags _1, sock
     }
 
 
-// STRUCT socket_address_info
-struct socket_address_info
+// CLASS socket_address_info
+class socket_address_info
     {
+public:
     _Socket_address_flags_helper flags;
     socket_address_family family;
     socket_type socktype;
     socket_protocol protocol;
+    std::string canonname;
     std::shared_ptr<_Socket_address_base> addr;
+
+public:
+    inline socket_address_info()
+        : flags( 0 )
+        , family( socket_address_family::unknown )
+        , socktype( socket_type::unknown )
+        , protocol( unknown_socket_protocol() )
+        , canonname( "" )
+        , addr( nullptr )
+        {   // construct uninitialized socket address info
+        }
+
+    inline socket_address_info(
+        socket_address_family _Family,
+        socket_type _Type,
+        socket_protocol _Protocol,
+        std::string _Canonname = "",
+        _Socket_address_flags_helper _Flags = _Socket_address_flags_helper( 0 ) )
+        : flags( _Flags )
+        , family( _Family )
+        , socktype( _Type )
+        , protocol( _Protocol )
+        , canonname( _Canonname )
+        , addr( nullptr )
+        {   // construct socket address info hints structure
+        }
+
+    inline socket_address_info( const addrinfo& _Addrinfo )
+        : flags( _Addrinfo.ai_flags )
+        , family( static_cast<socket_address_family>(_Addrinfo.ai_family) )
+        , socktype( static_cast<socket_type>(_Addrinfo.ai_socktype) )
+        , protocol( static_cast<int>(_Addrinfo.ai_protocol) )
+        , canonname( _Addrinfo.ai_canonname ? _Addrinfo.ai_canonname : "" )
+        , addr( nullptr )
+        {   // construct socket address info from platform-dependent addrinfo struct
+        this->addr = _Create_socket_address( this->family, _Addrinfo.ai_addr );
+        }
+
+    _NODISCARD inline addrinfo get_addrinfo() const noexcept
+        {   // cast socket_address_info into platform-dependent addrinfo structure
+        _MyCanonname = nullptr;
+        const size_t _canoname_len = canonname.length() + 1;
+        if( _canoname_len > 1 )
+            {
+            _MyCanonname = std::shared_ptr<char>(
+                new char[_canoname_len], _Array_delete<char> );
+            // copy name to the temporary buffer
+            __impl::memcpy(
+                _MyCanonname.get(),
+                canonname.c_str(),
+                _canoname_len );
+            }
+        // prepare platform-dependent addrinfo structure
+        addrinfo _addrinfo;
+        __impl::memset( &_addrinfo, 0, sizeof( _addrinfo ) );
+        _addrinfo.ai_family = static_cast<int>(family);
+        _addrinfo.ai_socktype = static_cast<int>(socktype);
+        _addrinfo.ai_protocol = static_cast<int>(protocol);
+        _addrinfo.ai_flags = static_cast<int>(flags);
+        _addrinfo.ai_canonname = _MyCanonname.get();
+        return _addrinfo;
+        }
+
+private:
+    mutable std::shared_ptr<char> _MyCanonname;
     };
 
 
 _NODISCARD inline socket_address_info get_socket_address_info( const std::string& _Svc_name, const socket_address_info& _Hints )
     {   // get socket address info using provided hints
-
-    addrinfo _hints = { 0 }, * _addrinfo;
-    _hints.ai_family = static_cast<int>(_Hints.family);
-    _hints.ai_socktype = static_cast<int>(_Hints.socktype);
-    _hints.ai_protocol = static_cast<int>(_Hints.protocol);
-    _hints.ai_flags = static_cast<int>(_Hints.flags);
-
+    addrinfo* _addrinfo;
+    addrinfo _hints = _Hints.get_addrinfo();
     if( __impl::getaddrinfo( nullptr, _Svc_name.c_str(), &_hints, &_addrinfo ) != 0 )
         { // call to getaddrinfo failed
         throw socket_exception( -1 );
         }
-
     // pass retrieved pointer to shared_ptr for automatic memory management
     std::shared_ptr<addrinfo> _addrinfo_sp( _addrinfo, __impl::freeaddrinfo );
-
-    // construct output structure
-    socket_address_info result = {};
-    result.family = static_cast<socket_address_family>(_addrinfo_sp->ai_family);
-    result.socktype = static_cast<socket_type>(_addrinfo_sp->ai_socktype);
-    result.protocol = static_cast<int>(_addrinfo_sp->ai_protocol);
-    result.flags = _Socket_address_flags_helper( _addrinfo_sp->ai_flags );
-    result.addr = _Create_socket_address( result.family, _addrinfo_sp->ai_addr );
-
-    return result;
+    return socket_address_info( *_addrinfo_sp );
     }
 
 
