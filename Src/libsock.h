@@ -439,7 +439,7 @@ public:
         }
 
     inline socket_address( const _SockAddrTy* _Sockaddr ) noexcept
-        : _Socket_address_base( _Family )
+        : _Socket_address_base( _Family ), _MySockaddr()
         {   // construct socket address wrapper
         if( _Sockaddr != nullptr )
             _MySockaddr = (*_Sockaddr);
@@ -468,7 +468,7 @@ using socket_address_irda = socket_address<socket_address_family::irda, _Sockadd
 using socket_address_local = socket_address<socket_address_family::local, _Sockaddr_local>;
 
 
-_NODISCARD inline _STD shared_ptr<_Socket_address_base> create_socket_address( socket_address_family _Family, const sockaddr* _Sockaddr )
+_NODISCARD inline _STD shared_ptr<_Socket_address_base> _Create_socket_address( socket_address_family _Family, const sockaddr* _Sockaddr )
     {   // construct socket_address structure based on the family
     // Helper macro for socket_address structure creation
 #   define _CASE_ADDRESS_FAMILY(AF) \
@@ -524,7 +524,7 @@ _NODISCARD inline socket_address_info get_socket_address_info( const char* _Svc_
     result.socktype = static_cast<socket_type>(_addrinfo_sp->ai_socktype);
     result.protocol = static_cast<int>(_addrinfo_sp->ai_protocol);
     result.flags = _addrinfo_sp->ai_flags;
-    result.addr = create_socket_address( result.family, _addrinfo_sp->ai_addr );
+    result.addr = _Create_socket_address( result.family, _addrinfo_sp->ai_addr );
 
     return result;
     }

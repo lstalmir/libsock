@@ -11,7 +11,7 @@ using namespace std;
 
 int main()
     {
-    volatile libsock_scope sockscope;
+    libsock_scope sockscope;
 
     socket_address_info hints = { 0 };
     hints.family = socket_address_family::inet;
