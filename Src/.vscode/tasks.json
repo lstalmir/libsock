@@ -4,13 +4,13 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "g++ -pthread validate.cpp -o libsock",
+            "command": "g++ -Wall -std=c++11 -pthread validate.cpp -o libsock",
             "problemMatcher": []
         },
         {
             "label": "build-dbg",
             "type": "shell",
-            "command": "g++ -pthread validate.cpp -O0 -ggdb -o libsock",
+            "command": "g++ -Wall -std=c++11 -pthread validate.cpp -O0 -ggdb -o libsock",
             "problemMatcher": []
         }
     ]
