@@ -39,7 +39,13 @@ _TRY_BEGIN
     libsock::socket sock( addrinfo );
     sock.connect( *addrinfo.addr );
 
-    g_recv_byte_count = sock.recv( g_recv_buffer, sizeof( g_recv_buffer ) );
+    g_recv_byte_count = sock.recv(
+        g_recv_buffer,
+        sizeof( g_recv_buffer ) );
+
+    g_recv_byte_count += sock.recv(
+        g_recv_buffer + g_recv_byte_count - 1,
+        sizeof( g_recv_buffer ) - g_recv_byte_count + 1 );
 
     sock.shutdown();
     }
@@ -73,17 +79,20 @@ _TRY_BEGIN
     g_client_thread = thread( sock_thread_proc );
 
     libsock::socket client_sock = localhost_sock.accept();
-    client_sock << "Hello";
+    libsock::socketstream stream( client_sock );
+
+    stream << string( "Hello" );
+    stream << (short)0x30;
 
     if( !g_client_thread.joinable() )
         return -1;
 
     g_client_thread.join();
 
-    if( g_recv_byte_count != 6 )
+    if( g_recv_byte_count != 8 )
         return -2;
 
-    if( strcmp( "Hello", g_recv_buffer ) != 0 )
+    if( strcmp( "Hello0", g_recv_buffer ) != 0 )
         return -3;
 
     return 0;

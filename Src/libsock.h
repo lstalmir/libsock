@@ -7,15 +7,27 @@
 #include <system_error>
 
 #ifndef _CONSTEXPRIF
-#if defined( __cpp_if_constexpr ) && __cpp_if_constexpr <= __cplusplus
+#if defined( __cpp_if_constexpr )
+#if __cpp_if_constexpr <= __cplusplus
 #define _CONSTEXPRIF constexpr
+#else
+#define _CONSTEXPRIF
+#endif
 #else
 #define _CONSTEXPRIF
 #endif
 #endif
 
 #ifndef _NODISCARD
+#if defined( __has_cpp_attribute )
+#if __has_cpp_attribute( nodiscard )
+#define _NODISCARD [[nodiscard]]
+#else
 #define _NODISCARD
+#endif
+#else
+#define _NODISCARD
+#endif
 #endif
 
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
@@ -227,13 +239,6 @@ inline int geterror( int _Retval ) noexcept
 #endif
     }
 }
-
-
-_NODISCARD inline bool _Has_flags( int _Combined, int _Flags ) noexcept
-    {   // check if combined flags contain specified values
-    return (((_Combined) & (_Flags)) == (_Flags));
-    }
-
 
 
 // CLASS _Socket_error_category
@@ -689,7 +694,7 @@ _NODISCARD inline socket_address_info get_socket_address_info(
 // CLASS socket
 class socket
     {
-public: // shutdown flag bits
+public: // flag bits
     static constexpr int in = 1;
     static constexpr int out = 2;
 
@@ -727,10 +732,7 @@ public:
     inline socket( socket&& _Original ) noexcept
         : socket()
         {   // take ownership of socket object
-        __impl::swap( _MyHandle, _Original._MyHandle );
-        __impl::swap( _MyAddr_family, _Original._MyAddr_family );
-        __impl::swap( _MyType, _Original._MyType );
-        __impl::swap( _MyProtocol, _Original._MyProtocol );
+        swap( _Original );
         }
 
     inline virtual ~socket() noexcept
@@ -742,6 +744,14 @@ public:
         this->_MyProtocol = unknown_socket_protocol();
         }
 
+    inline void swap( socket& _Other ) noexcept
+        {   // exchange sockets
+        __impl::swap( _MyHandle, _Other._MyHandle );
+        __impl::swap( _MyAddr_family, _Other._MyAddr_family );
+        __impl::swap( _MyType, _Other._MyType );
+        __impl::swap( _MyProtocol, _Other._MyProtocol );
+        }
+
     template<typename _SockOptTy>
     inline void set_opt( _SockOptTy _Opt, const void* _Optval, size_t _Optlen )
         {   // set socket option value
@@ -749,10 +759,47 @@ public:
             _Optval, _Optlen );
         }
 
+    template<>
+    inline void set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Optlen )
+        {   // set socket ip option value
+#   if defined( OS_LINUX )
+        if( _Opt == socket_opt_ip::dont_fragment )
+            {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
+            if( _Optlen != sizeof( long ) )
+                throw std::invalid_argument( "dont_fragment option requires LONG argument" );
+            long value = _Reinterpret_optional_or_default( _Optval, 0 );
+            value = (value != 0) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
+            return _Set_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
+                &value, sizeof( value ) );
+            }
+#   endif// OS_LINUX
+        return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
+            _Optval, _Optlen );
+        }
+
     template<typename _SockOptTy>
     inline void get_opt( _SockOptTy _Opt, void* _Optval, size_t* _Optlen ) const
         {   // get socket option value
         _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptTy>::value,
+            _Optval, _Optlen );
+        }
+
+    template<>
+    inline void get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
+        {   // get socket ip option value
+#   if defined( OS_LINUX )
+        if( _Opt == socket_opt_ip::dont_fragment )
+            {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
+            if( (!_Optlen) || (*_Optlen) != sizeof( long ) )
+                throw std::invalid_argument( "dont_fragment option requires LONG argument" );
+            long value = 0;
+            _Get_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
+                &value, _Optlen );
+            if( _Optval != nullptr )
+                * reinterpret_cast<long*>(_Optval) = (value == IP_PMTUDISC_DONT) ? 0 : 1;
+            }
+#   endif// OS_LINUX
+        return _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
             _Optval, _Optlen );
         }
 
@@ -863,42 +910,13 @@ public:
     inline void shutdown( int _Flags = socket::_inout )
         {   // close socket connection in specified direction
         int how = 0;
-        if( _Has_flags( _Flags, socket::_inout ) )
+        if( (_Flags & socket::_inout) == socket::_inout )
             how = socket::_Shut_inout;
-        else if( _Has_flags( _Flags, socket::in ) )
+        else if( (_Flags & socket::in) == socket::in )
             how = socket::_Shut_in;
-        else if( _Has_flags( _Flags, socket::out ) )
+        else if( (_Flags & socket::out) == socket::out )
             how = socket::_Shut_out;
         _Throw_if_failed( __impl::shutdown( this->_MyHandle, how ) );
-        }
-
-public:
-    template<typename _Ty>
-    inline socket& operator<<( const _Ty& _Data )
-        {   // send message through socket stream
-        if( !_Is_stream_socket() )
-            { // the socket is not stream-like
-            throw std::runtime_error( "Cannot use stream operations on non-stream socket" );
-            }
-        if( send( &_Data, sizeof( _Ty ) ) != static_cast<int>(sizeof( _Ty )) )
-            { // send failed without raising errors?
-            _Throw_if_failed( -1 );
-            }
-        return (*this);
-        }
-
-    template<typename _Ty>
-    inline socket& operator>>( _Ty& _Data )
-        {   // receive message through socket stream
-        if( !_Is_stream_socket() )
-            { // the socket is not stream-like
-            throw std::runtime_error( "Cannot use stream operations on non-stream socket" );
-            }
-        if( recv( &_Data, sizeof( _Ty ) ) != static_cast<int>(sizeof( _Ty )) )
-            { // recv failed without raising errors?
-            _Throw_if_failed( -1 );
-            }
-        return (*this);
         }
 
 public:
@@ -1000,46 +1018,88 @@ private: // platform-dependent shutdown values
 #else
 #error Shutdown flags not defined
 #endif
+
+    friend class socketstream;
     };
 
 
-template<>
-inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
-    {   // get socket ip option value
-#if defined( OS_LINUX )
-    if( _Opt == socket_opt_ip::dont_fragment )
-        {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
-        if( (!_Optlen) || (*_Optlen) != sizeof( long ) )
-            throw std::invalid_argument( "dont_fragment option requires LONG argument" );
-        long value = 0;
-        _Get_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
-            &value, _Optlen );
-        if( _Optval != nullptr )
-            *reinterpret_cast<long*>(_Optval) = (value == IP_PMTUDISC_DONT) ? 0 : 1;
-        }
-#endif// OS_LINUX
-    return _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
-        _Optval, _Optlen );
-    }
+// CLASS socketstream
+class socketstream
+    {
+public:
+    static constexpr int binary = 1;
 
+private:
+    static constexpr int _mode_default = socketstream::binary;
 
-template<>
-inline void socket::set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Optlen )
-    {   // set socket ip option value
-#if defined( OS_LINUX )
-    if( _Opt == socket_opt_ip::dont_fragment )
-        {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
-        if( _Optlen != sizeof( long ) )
-            throw std::invalid_argument( "dont_fragment option requires LONG argument" );
-        long value = _Reinterpret_optional_or_default( _Optval, 0 );
-        value = (value != 0) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
-        return _Set_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
-            &value, sizeof( value ) );
+public:
+    inline socketstream() noexcept
+        : _MySocket()
+        , _MyMode( socketstream::_mode_default )
+        {   // construct uninitialized socket stream
         }
-#endif// OS_LINUX
-    return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
-        _Optval, _Optlen );
-    }
+
+    inline socketstream( socket& _Socket, int _Mode = socketstream::_mode_default )
+        : _MySocket( &_Socket )
+        , _MyMode( _Mode )
+        {   // construct socket stream from socket object
+        if( !this->_MySocket->_Is_stream_socket() )
+            {
+            throw std::invalid_argument( "cannot create stream from non-stream socket" );
+            }
+        }
+
+    template<typename _Ty>
+    inline socketstream& operator<<( const _Ty& _Val )
+        {
+        static_assert(false, "operator<< is not defined for this type (" __FUNCSIG__ ")");
+        }
+
+    template<>
+    inline socketstream& operator<<( const short& _Val )
+        {   // send 16-bit signed integer through socket stream
+        _Throw_if_uninitialized();
+        _Send( _Val );
+        return (*this);
+        }
+
+    template<>
+    inline socketstream& operator<<( const std::string& _Val )
+        {   // send string through socket stream
+        _Throw_if_uninitialized();
+        const char* _Val_buffer = _Val.c_str();
+        const size_t _Val_buffer_size = _Val.length() + 1;
+        this->_MySocket->send( _Val_buffer, _Val_buffer_size );
+        return (*this);
+        }
+
+protected:
+    socket* _MySocket;
+    int _MyMode;
+
+    inline void _Throw_if_uninitialized()
+        {   // throw an exception if the stream has not been initialized
+        if( this->_MySocket == nullptr )
+            {
+            throw std::runtime_error( "stream is not associated with any socket" );
+            }
+        }
+
+    template<typename _Ty>
+    inline void _Send( const _Ty& _Val )
+        {   // serialize value
+        if( (_MyMode& socketstream::binary) == socketstream::binary )
+            {
+            this->_MySocket->send( &_Val, sizeof( short ) );
+            }
+        else
+            {
+            std::string _Val_str = std::to_string( _Val );
+            this->_MySocket->send( _Val_str.c_str(), _Val_str.length() + 1 );
+            }
+        }
+    };
+
 
 }// libsock
 
