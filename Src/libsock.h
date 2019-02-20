@@ -5,6 +5,7 @@
 #include <memory>
 #include <exception>
 #include <system_error>
+#include <type_traits>
 
 #ifndef _CONSTEXPRIF
 #if defined( __cpp_if_constexpr )
@@ -759,47 +760,10 @@ public:
             _Optval, _Optlen );
         }
 
-    template<>
-    inline void set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Optlen )
-        {   // set socket ip option value
-#   if defined( OS_LINUX )
-        if( _Opt == socket_opt_ip::dont_fragment )
-            {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
-            if( _Optlen != sizeof( long ) )
-                throw std::invalid_argument( "dont_fragment option requires LONG argument" );
-            long value = _Reinterpret_optional_or_default( _Optval, 0 );
-            value = (value != 0) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
-            return _Set_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
-                &value, sizeof( value ) );
-            }
-#   endif// OS_LINUX
-        return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
-            _Optval, _Optlen );
-        }
-
     template<typename _SockOptTy>
     inline void get_opt( _SockOptTy _Opt, void* _Optval, size_t* _Optlen ) const
         {   // get socket option value
         _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptTy>::value,
-            _Optval, _Optlen );
-        }
-
-    template<>
-    inline void get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
-        {   // get socket ip option value
-#   if defined( OS_LINUX )
-        if( _Opt == socket_opt_ip::dont_fragment )
-            {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
-            if( (!_Optlen) || (*_Optlen) != sizeof( long ) )
-                throw std::invalid_argument( "dont_fragment option requires LONG argument" );
-            long value = 0;
-            _Get_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
-                &value, _Optlen );
-            if( _Optval != nullptr )
-                * reinterpret_cast<long*>(_Optval) = (value == IP_PMTUDISC_DONT) ? 0 : 1;
-            }
-#   endif// OS_LINUX
-        return _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
             _Optval, _Optlen );
         }
 
@@ -1022,6 +986,43 @@ private: // platform-dependent shutdown values
     friend class socketstream;
     };
 
+template<>
+inline void socket::set_opt( socket_opt_ip _Opt, const void* _Optval, size_t _Optlen )
+    {   // set socket ip option value specialization
+#if defined( OS_LINUX )
+    if( _Opt == socket_opt_ip::dont_fragment )
+        {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
+        if( _Optlen != sizeof( long ) )
+            throw std::invalid_argument( "dont_fragment option requires LONG argument" );
+        long value = _Reinterpret_optional_or_default( _Optval, 0 );
+        value = (value != 0) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
+        return _Set_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
+            &value, sizeof( value ) );
+        }
+#endif// OS_LINUX
+    return _Set_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
+        _Optval, _Optlen );
+    }
+
+template<>
+inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen ) const
+    {   // get socket ip option value specialization
+#if defined( OS_LINUX )
+    if( _Opt == socket_opt_ip::dont_fragment )
+        {   // Linux OSes get/set DF flag via mtu MTU_DISCOVER settings
+        if( (!_Optlen) || (*_Optlen) != sizeof( long ) )
+            throw std::invalid_argument( "dont_fragment option requires LONG argument" );
+        long value = 0;
+        _Get_socket_opt( static_cast<int>(socket_opt_ip::mtu_discover), _Socket_opt_level<socket_opt_ip>::value,
+            &value, _Optlen );
+        if( _Optval != nullptr )
+            * reinterpret_cast<long*>(_Optval) = (value == IP_PMTUDISC_DONT) ? 0 : 1;
+        }
+#endif// OS_LINUX
+    return _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<socket_opt_ip>::value,
+        _Optval, _Optlen );
+    }
+
 
 // CLASS socketstream
 class socketstream
@@ -1049,26 +1050,52 @@ public:
             }
         }
 
-    template<typename _Ty>
-    inline socketstream& operator<<( const _Ty& _Val )
-        {
-        static_assert(false, "operator<< is not defined for this type (" __FUNCSIG__ ")");
+    inline socketstream& operator<<( short _Val )
+        { // send 16-bit signed integer
+        return _Common_send_arithmetic( _Val );
         }
 
-    template<>
-    inline socketstream& operator<<( const short& _Val )
-        {   // send 16-bit signed integer through socket stream
-        _Throw_if_uninitialized();
-        _Send( _Val );
-        return (*this);
+    inline socketstream& operator<<( unsigned short _Val )
+        { // send 16-bit unsigned integer
+        return _Common_send_arithmetic( _Val );
         }
 
-    template<>
-    inline socketstream& operator<<( const std::string& _Val )
+    inline socketstream& operator<<( long _Val )
+        { // send 32-bit signed integer
+        return _Common_send_arithmetic( _Val );
+        }
+
+    inline socketstream& operator<<( unsigned long _Val )
+        { // send 32-bit unsigned integer
+        return _Common_send_arithmetic( _Val );
+        }
+
+    inline socketstream& operator<<( long long _Val )
+        { // send 64-bit signed integer
+        return _Common_send_arithmetic( _Val );
+        }
+
+    inline socketstream& operator<<( unsigned long long _Val )
+        { // send 64-bit unsigned integer
+        return _Common_send_arithmetic( _Val );
+        }
+
+    inline socketstream& operator<<( float _Val )
+        { // send 32-bit floating-point
+        return _Common_send_arithmetic( _Val );
+        }
+
+    inline socketstream& operator<<( double _Val )
+        { // send 64-bit floating point
+        return _Common_send_arithmetic( _Val );
+        }
+
+    template<typename _Elem, typename _Traits>
+    inline socketstream& operator<<( const std::basic_string<_Elem, _Traits>& _Val )
         {   // send string through socket stream
         _Throw_if_uninitialized();
-        const char* _Val_buffer = _Val.c_str();
-        const size_t _Val_buffer_size = _Val.length() + 1;
+        const _Elem* _Val_buffer = _Val.c_str();
+        const size_t _Val_buffer_size = sizeof( _Elem ) * (_Val.length() + 1);
         this->_MySocket->send( _Val_buffer, _Val_buffer_size );
         return (*this);
         }
@@ -1086,17 +1113,20 @@ protected:
         }
 
     template<typename _Ty>
-    inline void _Send( const _Ty& _Val )
-        {   // serialize value
+    inline socketstream& _Common_send_arithmetic( _Ty _Val,
+            typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
+        {   // serialize arithmetic value
+        _Throw_if_uninitialized();
         if( (_MyMode& socketstream::binary) == socketstream::binary )
-            {
+            { // binary serialization, send raw bytes
             this->_MySocket->send( &_Val, sizeof( short ) );
             }
         else
-            {
-            std::string _Val_str = std::to_string( _Val );
+            { // text serialization, send string representation
+            const std::string _Val_str = std::to_string( _Val );
             this->_MySocket->send( _Val_str.c_str(), _Val_str.length() + 1 );
             }
+        return (*this);
         }
     };
 
