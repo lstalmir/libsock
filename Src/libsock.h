@@ -5,17 +5,19 @@
 #include <memory>
 #include <exception>
 #include <system_error>
+#include <string>
+#include <sstream>
 #include <type_traits>
 
-#ifndef _CONSTEXPRIF
+#ifndef _CONSTEXPR_IF
 #if defined( __cpp_if_constexpr )
 #if __cpp_if_constexpr <= __cplusplus
-#define _CONSTEXPRIF constexpr
+#define _CONSTEXPR_IF constexpr
 #else
-#define _CONSTEXPRIF
+#define _CONSTEXPR_IF
 #endif
 #else
-#define _CONSTEXPRIF
+#define _CONSTEXPR_IF
 #endif
 #endif
 
@@ -211,6 +213,8 @@ using ::freeaddrinfo;
 
 using ::memcpy;
 using ::memset;
+using ::strlen;
+using ::wcslen;
 
 using ::std::swap;
 using ::std::move;
@@ -569,6 +573,7 @@ _NODISCARD inline std::shared_ptr<_Socket_address_base> _Create_socket_address( 
 // ENUM CLASS socket_address_flags
 enum class socket_address_flags
     {
+    none                = 0,
     passive             = AI_PASSIVE,
     canonname           = AI_CANONNAME,
     };
@@ -692,6 +697,40 @@ _NODISCARD inline socket_address_info get_socket_address_info(
     }
 
 
+// ENUM CLASS socket_recv_flags
+enum class socket_recv_flags
+    {
+    none                = 0,
+    oob                 = MSG_OOB,
+    peek                = MSG_PEEK,
+    trunc               = MSG_TRUNC,
+    wait_all            = MSG_WAITALL
+    };
+
+using _Socket_recv_flags_helper = _Socket_flags_helper<socket_recv_flags, int>;
+
+_NODISCARD _Socket_recv_flags_helper operator|( socket_recv_flags _1, socket_recv_flags _2 ) noexcept
+    {   // construct socket recv flags helper from two flags
+    return _Socket_recv_flags_helper( _1 ) | _2;
+    }
+
+
+// ENUM CLASS socket_send_flags
+enum class socket_send_flags
+    {
+    none                = 0,
+    dont_route          = MSG_DONTROUTE,
+    oob                 = MSG_OOB
+    };
+
+using _Socket_send_flags_helper = _Socket_flags_helper<socket_send_flags, int>;
+
+_NODISCARD _Socket_send_flags_helper operator|( socket_send_flags _1, socket_send_flags _2 ) noexcept
+    {   // construct socket recv flags helper from two flags
+    return _Socket_send_flags_helper( _1 ) | _2;
+    }
+
+
 // CLASS socket
 class socket
     {
@@ -767,35 +806,37 @@ public:
             _Optval, _Optlen );
         }
 
-    inline virtual int send( const void* _Data, size_t _ByteSize, int _Flags = 0 )
+    inline virtual int send( const void* _Data, size_t _ByteSize, _Socket_send_flags_helper _Flags = socket_send_flags::none )
         {   // send message to the remote host
         return _Throw_if_failed( (int)__impl::send( this->_MyHandle,
             reinterpret_cast<const _Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
-            _Flags ) );
+            static_cast<int>(_Flags) ) );
         }
 
     template<typename _SockAddrTy>
-    inline int send_to( const void* _Data, size_t _ByteSize, const _SockAddrTy* _Addr, size_t _Addrlen, int _Flags = 0 )
+    inline int send_to( const void* _Data, size_t _ByteSize, const _SockAddrTy* _Addr, size_t _Addrlen,
+            _Socket_send_flags_helper _Flags = socket_send_flags::none )
         {   // send message to the remote host
         return _Throw_if_failed( (int)__impl::sendto( this->_MyHandle,
             reinterpret_cast<const _Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
-            _Flags,
+            static_cast<int>(_Flags),
             reinterpret_cast<const sockaddr*>(_Addr),
             static_cast<_Sock_size_t>(_Addrlen) ) );
         }
 
-    inline virtual int recv( void* _Data, size_t _ByteSize, int _Flags = 0 )
+    inline virtual int recv( void* _Data, size_t _ByteSize, _Socket_recv_flags_helper _Flags = socket_recv_flags::none )
         {   // receive message from the remote host
         return _Throw_if_failed( (int)__impl::recv( this->_MyHandle,
             reinterpret_cast<_Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
-            _Flags ) );
+            static_cast<int>(_Flags) ) );
         }
 
     template<typename _SockAddrTy>
-    inline int recv_from( void* _Data, size_t _ByteSize, _SockAddrTy* _Addr, size_t* _Addrlen, int _Flags = 0 )
+    inline int recv_from( void* _Data, size_t _ByteSize, _SockAddrTy* _Addr, size_t* _Addrlen,
+            _Socket_recv_flags_helper _Flags = socket_recv_flags::none )
         {   // receive message from the remote host
         // Length of _Addrlen value may differ, change it to platform-dependent
         // for the call and then cast it to size_t.
@@ -803,7 +844,7 @@ public:
         int receivedByteCount = _Throw_if_failed( (int)__impl::recvfrom( this->_MyHandle,
             reinterpret_cast<_Sockcomm_data_t*>(_Data),
             static_cast<_Sockcomm_data_size_t>(_ByteSize),
-            _Flags,
+            static_cast<int>(_Flags),
             reinterpret_cast<sockaddr*>(_Addr),
             reinterpret_cast<_Sock_size_t*>((_Addrlen) ? &addrlen : nullptr) ) );
         if( _Addrlen != nullptr )
@@ -1092,13 +1133,70 @@ public:
 
     template<typename _Elem, typename _Traits>
     inline socketstream& operator<<( const std::basic_string<_Elem, _Traits>& _Val )
-        {   // send string through socket stream
+        {   // send string
         _Throw_if_uninitialized();
         const _Elem* _Val_buffer = _Val.c_str();
         const size_t _Val_buffer_size = sizeof( _Elem ) * (_Val.length() + 1);
         this->_MySocket->send( _Val_buffer, _Val_buffer_size );
         return (*this);
         }
+
+    inline socketstream& operator<<( const char* _Str )
+        {   // send C-style string
+        _Throw_if_uninitialized();
+        const size_t _Str_size = sizeof( char ) * (__impl::strlen( _Str ) + 1);
+        this->_MySocket->send( _Str, _Str_size );
+        return (*this);
+        }
+
+    inline socketstream& operator<<( const wchar_t* _Str )
+        {   // send wide C-style string
+        _Throw_if_uninitialized();
+        const size_t _Str_size = sizeof( wchar_t ) * (__impl::wcslen( _Str ) + 1);
+        this->_MySocket->send( _Str, _Str_size );
+        return (*this);
+        }
+
+    inline socketstream& operator>>( short& _Val )
+        { // receive 16-bit signed integer
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( unsigned short& _Val )
+        { // receive 16-bit unsigned integer
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( long& _Val )
+        { // receive 32-bit signed integer
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( unsigned long& _Val )
+        { // receive 32-bit unsigned integer
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( long long& _Val )
+        { // receive 64-bit signed integer
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( unsigned long long& _Val )
+        { // receive 64-bit unsigned integer
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( float& _Val )
+        { // receive 32-bit floating-point
+        return _Common_recv_arithmetic( _Val );
+        }
+
+    inline socketstream& operator>>( double& _Val )
+        { // receive 64-bit floating point
+        return _Common_recv_arithmetic( _Val );
+        }
+
 
 protected:
     socket* _MySocket;
@@ -1113,13 +1211,13 @@ protected:
         }
 
     template<typename _Ty>
-    inline socketstream& _Common_send_arithmetic( _Ty _Val,
+    inline socketstream& _Common_send_arithmetic( const _Ty& _Val,
             typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
         {   // serialize arithmetic value
         _Throw_if_uninitialized();
-        if( (_MyMode& socketstream::binary) == socketstream::binary )
+        if( (this->_MyMode & socketstream::binary) == socketstream::binary )
             { // binary serialization, send raw bytes
-            this->_MySocket->send( &_Val, sizeof( short ) );
+            this->_MySocket->send( &_Val, sizeof( _Ty ) );
             }
         else
             { // text serialization, send string representation
@@ -1128,6 +1226,55 @@ protected:
             }
         return (*this);
         }
+
+    template<typename _Ty>
+    inline socketstream& _Common_recv_arithmetic( _Ty& _Val,
+            typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
+        {   // deserialize arithmetic value
+        _Throw_if_uninitialized();
+        if( (this->_MyMode & socketstream::binary) == socketstream::binary )
+            { // binary deserialization, recv raw bytes
+            this->_MySocket->recv( &_Val, sizeof( _Ty ) );
+            }
+        else
+            { // text deserialization, recv string representation
+            std::string _Val_str;
+            _Common_recv_string( _Val_str );
+            std::stringstream _Val_strstream( _Val_str );
+            _Val_strstream >> _Val;
+            }
+        return (*this);
+        }
+
+    template<typename _Elem, typename _Traits>
+    inline socketstream& _Common_recv_string( std::basic_string<_Elem, _Traits>& _Str )
+        {   // receive string value
+        std::basic_stringstream<_Elem, _Traits> _Str_stream;
+        constexpr size_t _Str_buffer_len = 1024;
+        constexpr size_t _Str_read_bytecount = sizeof( _Elem ) * (_Str_buffer_len - 1);
+        _Elem _Str_buffer[_Str_buffer_len];
+        bool _Has_end = false;
+        while( !_Has_end )
+            { // read stream until terminator is found
+            __impl::memset( _Str_buffer, 0, sizeof( _Str_buffer ) );
+            int _Recv_byte_count = this->_MySocket->recv( _Str_buffer, _Str_read_bytecount,
+                socket_recv_flags::peek ); // dont remove message from the queue yet
+            const _Elem* p = _Str_buffer;
+            while( ((*p) != (_Elem)(0)) ) ++p;
+            if( p != _Str_buffer + (_Str_buffer_len - 1) )
+                { // end of string found, add terminator
+                *const_cast<_Elem*>(p) = 0;
+                _Has_end = true;
+                // update recv size to skip only to the terminator
+                _Recv_byte_count = static_cast<int>(p - _Str_buffer) + 1;
+                }
+            _Str_stream << _Str_buffer;
+            this->_MySocket->recv( _Str_buffer, _Recv_byte_count );
+            }
+        _Str = _Str_stream.str();
+        return (*this);
+        }
+
     };
 
 

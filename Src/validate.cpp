@@ -37,15 +37,19 @@ _TRY_BEGIN
         get_socket_address_info( "", "27015", hints );
 
     libsock::socket sock( addrinfo );
+    libsock::socketstream sock_stream( sock, 0 );
+
     sock.connect( *addrinfo.addr );
 
     g_recv_byte_count = sock.recv(
         g_recv_buffer,
         sizeof( g_recv_buffer ) );
 
-    g_recv_byte_count += sock.recv(
-        g_recv_buffer + g_recv_byte_count - 1,
-        sizeof( g_recv_buffer ) - g_recv_byte_count + 1 );
+    short number = 0;
+    sock_stream >> number;
+
+    memcpy( g_recv_buffer + g_recv_byte_count - 1, &number, sizeof( number ) );
+    g_recv_byte_count += sizeof( number );
 
     sock.shutdown();
     }
@@ -79,7 +83,7 @@ _TRY_BEGIN
     g_client_thread = thread( sock_thread_proc );
 
     libsock::socket client_sock = localhost_sock.accept();
-    libsock::socketstream stream( client_sock );
+    libsock::socketstream stream( client_sock, 0 );
 
     stream << string( "Hello" );
     stream << (short)0x30;
