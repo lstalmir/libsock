@@ -2,6 +2,7 @@
 #ifndef __libsock_h_
 #define __libsock_h_
 #ifndef RC_INVOKED
+#include <utility>
 #include <memory>
 #include <exception>
 #include <system_error>
@@ -1101,6 +1102,12 @@ inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen 
     }
 
 
+inline void swap( socket& _Left, socket& _Right ) noexcept
+    {	// exchange values stored at _Left and _Right
+    _Left.swap( _Right );
+    }
+
+
 // CLASS socketstream
 template<typename _Elem, typename _Traits = std::char_traits<_Elem>>
 class basic_socketstream
@@ -1130,6 +1137,13 @@ public:
             {
             throw std::invalid_argument( "cannot create stream from non-stream socket" );
             }
+        }
+
+    inline void swap( basic_socketstream& _Other )
+        {   // exchange socket streams
+        __impl::swap( this->_MySocket, _Other._MySocket );
+        __impl::swap( this->_MyMode, _Other._MyMode );
+        ios_base::swap( _Other );
         }
     
     inline basic_socketstream& operator<<( std::ios_base& (&_Mod)(std::ios_base&) )
@@ -1362,6 +1376,13 @@ protected:
 
 using socketstream = basic_socketstream<char>;
 using wsocketstream = basic_socketstream<wchar_t>;
+
+
+template<typename _Elem, typename _Traits>
+inline void swap( basic_socketstream<_Elem, _Traits>& _Left, basic_socketstream<_Elem, _Traits>& _Right ) noexcept
+    {	// exchange values stored at _Left and _Right
+    _Left.swap( _Right );
+    }
 
 
 }// libsock
