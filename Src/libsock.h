@@ -36,9 +36,14 @@
 
 #if defined( _WIN32 ) || defined( _WIN64 ) || defined( WIN32 )
 #define OS_WINDOWS
+#define NOMINMAX
 #include <sdkddkver.h>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#undef NOMINMAX
+
+#define strcpy strcpy_s
+#define wcscpy wcscpy_s
 
 #elif defined( __linux__ )
 #define OS_LINUX
@@ -215,7 +220,9 @@ using ::freeaddrinfo;
 using ::memcpy;
 using ::memset;
 using ::strlen;
+using ::strcpy;
 using ::wcslen;
+using ::wcscpy;
 
 using ::std::swap;
 using ::std::move;
@@ -1207,18 +1214,18 @@ public:
     template<size_t _Size>
     inline socketstream& operator>>( char (&_Str)[_Size] )
         {   // send C-style string
-        _Throw_if_uninitialized();
-        const size_t _Str_size = sizeof( char ) * (__impl::strlen( _Str ) + 1);
-        this->_MySocket->send( _Str, _Str_size );
+        std::string _Str_buffer;
+        _Common_recv_string( _Str_buffer, _Size );
+        __impl::strcpy( _Str, _Str_buffer.c_str() );
         return (*this);
         }
 
     template<size_t _Size>
     inline socketstream& operator>>( wchar_t (&_Str)[_Size] )
         {   // send wide C-style string
-        _Throw_if_uninitialized();
-        const size_t _Str_size = sizeof( wchar_t ) * (__impl::wcslen( _Str ) + 1);
-        this->_MySocket->send( _Str, _Str_size );
+        std::wstring _Str_buffer;
+        _Common_recv_string( _Str_buffer, _Size );
+        __impl::wcscpy( _Str, _Str_buffer.c_str() );
         return (*this);
         }
 
@@ -1272,7 +1279,8 @@ protected:
         }
 
     template<typename _Elem, typename _Traits>
-    inline socketstream& _Common_recv_string( std::basic_string<_Elem, _Traits>& _Str )
+    inline socketstream& _Common_recv_string( std::basic_string<_Elem, _Traits>& _Str,
+            size_t _Maxlen = std::numeric_limits<size_t>::max() )
         {   // receive string value
         _Throw_if_uninitialized();
         std::basic_stringstream<_Elem, _Traits> _Str_stream;
@@ -1293,9 +1301,13 @@ protected:
                 _Str_buffer.resize( static_cast<size_t>(p - _Str_buffer_ptr) / sizeof( _Elem ) + 1 );
                 _Has_end = true;
                 }
-            else
-                _Str_buffer.resize( _Str_buffer.size() + 1024 );
+            else _Str_buffer.resize( _Str_buffer.size() + 1024 );
             }
+        if( _Str_buffer.size() > _Maxlen )
+            { // insufficient buffer
+            throw std::runtime_error( "insufficient buffer for string" );
+            }
+        // remove whole string from the queue
         this->_MySocket->recv( _Str_buffer.data(), _Str_buffer.size() * sizeof( _Elem ) );
         _Str.assign( _Str_buffer.data() );
         return (*this);

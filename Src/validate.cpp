@@ -41,11 +41,8 @@ _TRY_BEGIN
 
     sock.connect( *addrinfo.addr );
 
-    std::string text;
-    sock_stream >> text;
-
-    memcpy( g_recv_buffer, text.c_str(), text.length() + 1 );
-    g_recv_byte_count += text.size() + 1;
+    sock_stream >> g_recv_buffer;
+    g_recv_byte_count += (int)strlen( g_recv_buffer ) + 1;
 
     short number = 0;
     sock_stream >> number;
