@@ -775,6 +775,7 @@ public:
     inline socket( const socket_address_info& _Addrinfo )
         : socket( _Addrinfo.family, _Addrinfo.socktype, _Addrinfo.protocol )
         {   // construct socket object from addrinfo structure
+        this->_MyAddrinfo.reset( new socket_address_info( _Addrinfo ) );
         }
 
     inline socket( socket&& _Original ) noexcept
@@ -872,9 +873,20 @@ public:
 
     inline void bind( const _Socket_address_base& _Addr )
         {   // bind socket to the network interface
-        return bind(
-            _Addr.get_native_sockaddr(),
+        return bind( _Addr.get_native_sockaddr(),
             _Addr.get_native_sockaddr_size() );
+        }
+
+    inline void bind()
+        {   // bind socket to the network interface
+        if( this->_MyAddrinfo == nullptr )
+            {
+            throw std::runtime_error(
+                "Argumentless binding is available only if socket has been constructed "
+                "with socket_address_info structure" );
+            }
+        return bind( _MyAddrinfo->addr->get_native_sockaddr(),
+            _MyAddrinfo->addr->get_native_sockaddr_size() );
         }
 
     inline void listen( size_t _QueueLength = SOMAXCONN )
@@ -893,8 +905,7 @@ public:
 
     inline void connect( const _Socket_address_base& _Addr )
         {   // connect to the remote host
-        return connect(
-            _Addr.get_native_sockaddr(),
+        return connect( _Addr.get_native_sockaddr(),
             _Addr.get_native_sockaddr_size() );
         }
 
@@ -958,6 +969,8 @@ protected:
     socket_address_family _MyAddr_family;
     socket_type _MyType;
     socket_protocol _MyProtocol;
+
+    std::shared_ptr<socket_address_info> _MyAddrinfo;
 
     inline socket( _Socket_handle _Handle, socket_address_family _Family, socket_type _Type, socket_protocol _Protocol ) noexcept
         : _MyHandle( _Handle )
@@ -1157,11 +1170,27 @@ public:
         return (*this);
         }
 
+    template<size_t _Size>
+    inline socketstream& operator<<( const char (&_Str)[_Size] )
+        {   // send C-style string
+        _Throw_if_uninitialized();
+        this->_MySocket->send( _Str, _Size );
+        return (*this);
+        }
+
     inline socketstream& operator<<( const wchar_t* _Str )
         {   // send wide C-style string
         _Throw_if_uninitialized();
         const size_t _Str_size = sizeof( wchar_t ) * (__impl::wcslen( _Str ) + 1);
         this->_MySocket->send( _Str, _Str_size );
+        return (*this);
+        }
+
+    template<size_t _Size>
+    inline socketstream& operator<<( const wchar_t (&_Str)[_Size] )
+        {   // send C-style string
+        _Throw_if_uninitialized();
+        this->_MySocket->send( _Str, _Size * sizeof( wchar_t ) );
         return (*this);
         }
 
@@ -1213,7 +1242,7 @@ public:
 
     template<size_t _Size>
     inline socketstream& operator>>( char (&_Str)[_Size] )
-        {   // send C-style string
+        {   // receive C-style string
         std::string _Str_buffer;
         _Common_recv_string( _Str_buffer, _Size );
         __impl::strcpy( _Str, _Str_buffer.c_str() );
@@ -1222,7 +1251,7 @@ public:
 
     template<size_t _Size>
     inline socketstream& operator>>( wchar_t (&_Str)[_Size] )
-        {   // send wide C-style string
+        {   // receive wide C-style string
         std::wstring _Str_buffer;
         _Common_recv_string( _Str_buffer, _Size );
         __impl::wcscpy( _Str, _Str_buffer.c_str() );

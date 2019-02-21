@@ -76,7 +76,7 @@ _TRY_BEGIN
         get_socket_address_info( "", "27015", hints );
 
     libsock::socket localhost_sock( addrinfo );
-    localhost_sock.bind( *addrinfo.addr );
+    localhost_sock.bind();
     localhost_sock.listen();
 
     g_client_thread = thread( sock_thread_proc );
