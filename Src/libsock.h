@@ -7,6 +7,7 @@
 #include <system_error>
 #include <string>
 #include <sstream>
+#include <vector>
 #include <type_traits>
 
 #ifndef _CONSTEXPR_IF
@@ -1197,6 +1198,30 @@ public:
         return _Common_recv_arithmetic( _Val );
         }
 
+    template<typename _Elem, typename _Traits>
+    inline socketstream& operator>>( std::basic_string<_Elem, _Traits>& _Val )
+        {   // receive string
+        return _Common_recv_string( _Val );
+        }
+
+    template<size_t _Size>
+    inline socketstream& operator>>( char (&_Str)[_Size] )
+        {   // send C-style string
+        _Throw_if_uninitialized();
+        const size_t _Str_size = sizeof( char ) * (__impl::strlen( _Str ) + 1);
+        this->_MySocket->send( _Str, _Str_size );
+        return (*this);
+        }
+
+    template<size_t _Size>
+    inline socketstream& operator>>( wchar_t (&_Str)[_Size] )
+        {   // send wide C-style string
+        _Throw_if_uninitialized();
+        const size_t _Str_size = sizeof( wchar_t ) * (__impl::wcslen( _Str ) + 1);
+        this->_MySocket->send( _Str, _Str_size );
+        return (*this);
+        }
+
 
 protected:
     socket* _MySocket;
@@ -1249,29 +1274,30 @@ protected:
     template<typename _Elem, typename _Traits>
     inline socketstream& _Common_recv_string( std::basic_string<_Elem, _Traits>& _Str )
         {   // receive string value
+        _Throw_if_uninitialized();
         std::basic_stringstream<_Elem, _Traits> _Str_stream;
-        constexpr size_t _Str_buffer_len = 1024;
-        constexpr size_t _Str_read_bytecount = sizeof( _Elem ) * (_Str_buffer_len - 1);
-        _Elem _Str_buffer[_Str_buffer_len];
+        std::vector<_Elem> _Str_buffer( 1024 );
         bool _Has_end = false;
         while( !_Has_end )
             { // read stream until terminator is found
-            __impl::memset( _Str_buffer, 0, sizeof( _Str_buffer ) );
-            int _Recv_byte_count = this->_MySocket->recv( _Str_buffer, _Str_read_bytecount,
-                socket_recv_flags::peek ); // dont remove message from the queue yet
-            const _Elem* p = _Str_buffer;
+            _Elem* _Str_buffer_ptr = _Str_buffer.data();
+            size_t _Str_buffer_len = _Str_buffer.size() - 1;
+            size_t _Str_buffer_size = _Str_buffer_len * sizeof( _Elem );
+            // dont remove message from the queue yet
+            this->_MySocket->recv( _Str_buffer_ptr, _Str_buffer_size, socket_recv_flags::peek );
+            _Str_buffer_ptr[_Str_buffer_len] = 0;
+            const _Elem* p = _Str_buffer_ptr;
             while( ((*p) != (_Elem)(0)) ) ++p;
-            if( p != _Str_buffer + (_Str_buffer_len - 1) )
+            if( p != _Str_buffer_ptr + _Str_buffer_len )
                 { // end of string found, add terminator
-                *const_cast<_Elem*>(p) = 0;
+                _Str_buffer.resize( static_cast<size_t>(p - _Str_buffer_ptr) / sizeof( _Elem ) + 1 );
                 _Has_end = true;
-                // update recv size to skip only to the terminator
-                _Recv_byte_count = static_cast<int>(p - _Str_buffer) + 1;
                 }
-            _Str_stream << _Str_buffer;
-            this->_MySocket->recv( _Str_buffer, _Recv_byte_count );
+            else
+                _Str_buffer.resize( _Str_buffer.size() + 1024 );
             }
-        _Str = _Str_stream.str();
+        this->_MySocket->recv( _Str_buffer.data(), _Str_buffer.size() * sizeof( _Elem ) );
+        _Str.assign( _Str_buffer.data() );
         return (*this);
         }
 
