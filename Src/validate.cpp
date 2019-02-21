@@ -85,7 +85,7 @@ _TRY_BEGIN
     libsock::socketstream stream( client_sock, 0 );
 
     stream << string( "Hello" );
-    stream << (short)0x30;
+    stream << std::hex << (short)0x30;
 
     if( !g_client_thread.joinable() )
         return -1;

@@ -92,6 +92,20 @@ inline void _Array_delete( _Ty _Array[] ) noexcept
         delete[] _Array;
     }
 
+template<typename _Elem, typename _Ty>
+inline std::basic_string<_Elem> _To_string( _Ty _Val,
+        typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
+    {
+    return std::to_string( _Val );
+    }
+
+template<typename _Ty>
+inline std::basic_string<wchar_t> _To_string( _Ty _Val,
+        typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
+    {
+    return std::to_wstring( _Val );
+    }
+
 
 // CLASS TEMPLATE _Socket_flags_helper
 template<typename _FlagTy, typename _StorageTy>
@@ -1045,7 +1059,8 @@ private: // platform-dependent shutdown values
 #error Shutdown flags not defined
 #endif
 
-    friend class socketstream;
+    template<typename _Elem, typename _Traits>
+    friend class basic_socketstream;
     };
 
 template<>
@@ -1087,22 +1102,27 @@ inline void socket::get_opt( socket_opt_ip _Opt, void* _Optval, size_t* _Optlen 
 
 
 // CLASS socketstream
-class socketstream
+template<typename _Elem, typename _Traits = std::char_traits<_Elem>>
+class basic_socketstream
+    : public std::ios_base
     {
 public:
     static constexpr int binary = 1;
 
 private:
-    static constexpr int _mode_default = socketstream::binary;
+    static constexpr int _mode_default = basic_socketstream::binary;
 
 public:
-    inline socketstream() noexcept
-        : _MySocket()
-        , _MyMode( socketstream::_mode_default )
+    typedef std::ios_base _MyBase;
+
+    inline basic_socketstream() noexcept
+        : _MyBase()
+        , _MySocket()
+        , _MyMode( basic_socketstream::_mode_default )
         {   // construct uninitialized socket stream
         }
 
-    inline socketstream( socket& _Socket, int _Mode = socketstream::_mode_default )
+    inline basic_socketstream( socket& _Socket, int _Mode = basic_socketstream::_mode_default )
         : _MySocket( &_Socket )
         , _MyMode( _Mode )
         {   // construct socket stream from socket object
@@ -1111,49 +1131,54 @@ public:
             throw std::invalid_argument( "cannot create stream from non-stream socket" );
             }
         }
+    
+    inline basic_socketstream& operator<<( std::ios_base& (&_Mod)(std::ios_base&) )
+        {   // set format flag
+        _Mod( *this );
+        return (*this);
+        }
 
-    inline socketstream& operator<<( short _Val )
+    inline basic_socketstream& operator<<( short _Val )
         { // send 16-bit signed integer
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( unsigned short _Val )
+    inline basic_socketstream& operator<<( unsigned short _Val )
         { // send 16-bit unsigned integer
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( long _Val )
+    inline basic_socketstream& operator<<( long _Val )
         { // send 32-bit signed integer
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( unsigned long _Val )
+    inline basic_socketstream& operator<<( unsigned long _Val )
         { // send 32-bit unsigned integer
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( long long _Val )
+    inline basic_socketstream& operator<<( long long _Val )
         { // send 64-bit signed integer
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( unsigned long long _Val )
+    inline basic_socketstream& operator<<( unsigned long long _Val )
         { // send 64-bit unsigned integer
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( float _Val )
+    inline basic_socketstream& operator<<( float _Val )
         { // send 32-bit floating-point
         return _Common_send_arithmetic( _Val );
         }
 
-    inline socketstream& operator<<( double _Val )
+    inline basic_socketstream& operator<<( double _Val )
         { // send 64-bit floating point
         return _Common_send_arithmetic( _Val );
         }
 
-    template<typename _Elem, typename _Traits>
-    inline socketstream& operator<<( const std::basic_string<_Elem, _Traits>& _Val )
+    inline basic_socketstream& operator<<( const std::basic_string<_Elem, _Traits>& _Val )
         {   // send string
         _Throw_if_uninitialized();
         const _Elem* _Val_buffer = _Val.c_str();
@@ -1162,99 +1187,90 @@ public:
         return (*this);
         }
 
-    inline socketstream& operator<<( const char* _Str )
-        {   // send C-style string
-        _Throw_if_uninitialized();
-        const size_t _Str_size = sizeof( char ) * (__impl::strlen( _Str ) + 1);
-        this->_MySocket->send( _Str, _Str_size );
-        return (*this);
-        }
-
-    template<size_t _Size>
-    inline socketstream& operator<<( const char (&_Str)[_Size] )
-        {   // send C-style string
-        _Throw_if_uninitialized();
-        this->_MySocket->send( _Str, _Size );
-        return (*this);
-        }
-
-    inline socketstream& operator<<( const wchar_t* _Str )
+    inline basic_socketstream& operator<<( const _Elem* _Str )
         {   // send wide C-style string
         _Throw_if_uninitialized();
-        const size_t _Str_size = sizeof( wchar_t ) * (__impl::wcslen( _Str ) + 1);
+        const size_t _Str_size = sizeof( _Elem );
+        if _CONSTEXPR_IF( sizeof( _Elem ) == sizeof( wchar_t ) )
+            _Str_size *= __impl::wcslen( _Str ) + 1;
+        else if _CONSTEXPR_IF( sizeof( _Elem ) == sizeof( char ) )
+            _Str_size *= __impl::strlen( _Str ) + 1;
+        else throw std::runtime_error( "unsupported char type" );
         this->_MySocket->send( _Str, _Str_size );
         return (*this);
         }
 
     template<size_t _Size>
-    inline socketstream& operator<<( const wchar_t (&_Str)[_Size] )
+    inline basic_socketstream& operator<<( const _Elem (&_Str)[_Size] )
         {   // send C-style string
         _Throw_if_uninitialized();
-        this->_MySocket->send( _Str, _Size * sizeof( wchar_t ) );
+        this->_MySocket->send( _Str, _Size * sizeof( _Elem ) );
         return (*this);
         }
 
-    inline socketstream& operator>>( short& _Val )
+    inline basic_socketstream& operator>>( short& _Val )
         { // receive 16-bit signed integer
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( unsigned short& _Val )
+    inline basic_socketstream& operator>>( unsigned short& _Val )
         { // receive 16-bit unsigned integer
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( long& _Val )
+    inline basic_socketstream& operator>>( long& _Val )
         { // receive 32-bit signed integer
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( unsigned long& _Val )
+    inline basic_socketstream& operator>>( unsigned long& _Val )
         { // receive 32-bit unsigned integer
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( long long& _Val )
+    inline basic_socketstream& operator>>( long long& _Val )
         { // receive 64-bit signed integer
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( unsigned long long& _Val )
+    inline basic_socketstream& operator>>( unsigned long long& _Val )
         { // receive 64-bit unsigned integer
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( float& _Val )
+    inline basic_socketstream& operator>>( float& _Val )
         { // receive 32-bit floating-point
         return _Common_recv_arithmetic( _Val );
         }
 
-    inline socketstream& operator>>( double& _Val )
+    inline basic_socketstream& operator>>( double& _Val )
         { // receive 64-bit floating point
         return _Common_recv_arithmetic( _Val );
         }
 
-    template<typename _Elem, typename _Traits>
-    inline socketstream& operator>>( std::basic_string<_Elem, _Traits>& _Val )
+    inline basic_socketstream& operator>>( std::basic_string<_Elem, _Traits>& _Val )
         {   // receive string
         return _Common_recv_string( _Val );
         }
 
     template<size_t _Size>
-    inline socketstream& operator>>( char (&_Str)[_Size] )
-        {   // receive C-style string
-        std::string _Str_buffer;
-        _Common_recv_string( _Str_buffer, _Size );
-        __impl::strcpy( _Str, _Str_buffer.c_str() );
-        return (*this);
-        }
-
-    template<size_t _Size>
-    inline socketstream& operator>>( wchar_t (&_Str)[_Size] )
+    inline basic_socketstream& operator>>( _Elem (&_Str)[_Size] )
         {   // receive wide C-style string
-        std::wstring _Str_buffer;
+        std::basic_string<_Elem, _Traits> _Str_buffer;
         _Common_recv_string( _Str_buffer, _Size );
-        __impl::wcscpy( _Str, _Str_buffer.c_str() );
+        if _CONSTEXPR_IF( sizeof( _Elem ) == sizeof( wchar_t ) )
+            {
+            __impl::wcscpy(
+                reinterpret_cast<_Elem[_Size]>(_Str),
+                reinterpret_cast<const _Elem*>(_Str_buffer.c_str()) );
+            }
+        else if _CONSTEXPR_IF( sizeof( _Elem ) == sizeof( char ) )
+            {
+            __impl::strcpy(
+                reinterpret_cast<_Elem[_Size]>(_Str),
+                reinterpret_cast<const _Elem*>(_Str_buffer.c_str()) );
+            }
+        else throw std::runtime_error( "unsupported char type" );
         return (*this);
         }
 
@@ -1272,43 +1288,43 @@ protected:
         }
 
     template<typename _Ty>
-    inline socketstream& _Common_send_arithmetic( const _Ty& _Val,
+    inline basic_socketstream& _Common_send_arithmetic( const _Ty& _Val,
             typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
         {   // serialize arithmetic value
         _Throw_if_uninitialized();
-        if( (this->_MyMode & socketstream::binary) == socketstream::binary )
+        if( (this->_MyMode & basic_socketstream::binary) == basic_socketstream::binary )
             { // binary serialization, send raw bytes
             this->_MySocket->send( &_Val, sizeof( _Ty ) );
             }
         else
             { // text serialization, send string representation
-            const std::string _Val_str = std::to_string( _Val );
+            std::basic_string<_Elem, _Traits> _Val_str = _To_string<_Elem>( _Val );
             this->_MySocket->send( _Val_str.c_str(), _Val_str.length() + 1 );
             }
         return (*this);
         }
 
     template<typename _Ty>
-    inline socketstream& _Common_recv_arithmetic( _Ty& _Val,
+    inline basic_socketstream& _Common_recv_arithmetic( _Ty& _Val,
             typename std::enable_if<std::is_arithmetic<_Ty>::value>::type* = nullptr )
         {   // deserialize arithmetic value
         _Throw_if_uninitialized();
-        if( (this->_MyMode & socketstream::binary) == socketstream::binary )
+        if( (this->_MyMode & basic_socketstream::binary) == basic_socketstream::binary )
             { // binary deserialization, recv raw bytes
             this->_MySocket->recv( &_Val, sizeof( _Ty ) );
             }
         else
             { // text deserialization, recv string representation
-            std::string _Val_str;
+            std::basic_string<_Elem, _Traits> _Val_str;
             _Common_recv_string( _Val_str );
-            std::stringstream _Val_strstream( _Val_str );
-            _Val_strstream >> _Val;
+            std::basic_stringstream<_Elem, _Traits> _Val_sstream( _Val_str );
+            _Val_sstream.setf( _MyBase::setf( 0 ) );
+            _Val_sstream >> _Val;
             }
         return (*this);
         }
 
-    template<typename _Elem, typename _Traits>
-    inline socketstream& _Common_recv_string( std::basic_string<_Elem, _Traits>& _Str,
+    inline basic_socketstream& _Common_recv_string( std::basic_string<_Elem, _Traits>& _Str,
             size_t _Maxlen = std::numeric_limits<size_t>::max() )
         {   // receive string value
         _Throw_if_uninitialized();
@@ -1343,6 +1359,9 @@ protected:
         }
 
     };
+
+using socketstream = basic_socketstream<char>;
+using wsocketstream = basic_socketstream<wchar_t>;
 
 
 }// libsock
