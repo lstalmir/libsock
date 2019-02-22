@@ -1114,6 +1114,7 @@ class basic_socketstream
     : public std::ios_base
     {
 public:
+    static constexpr int text = 0;
     static constexpr int binary = 1;
 
 private:
@@ -1222,6 +1223,12 @@ public:
         return (*this);
         }
 
+    inline basic_socketstream& operator>>( std::ios_base& (&_Mod)(std::ios_base&) )
+        {   // set format flag
+        _Mod( *this );
+        return (*this);
+        }
+
     inline basic_socketstream& operator>>( short& _Val )
         { // receive 16-bit signed integer
         return _Common_recv_arithmetic( _Val );
@@ -1312,7 +1319,7 @@ protected:
             }
         else
             { // text serialization, send string representation
-            std::basic_string<_Elem, _Traits> _Val_str = _To_string<_Elem>( _Val );
+            std::basic_string<_Elem, _Traits> _Val_str = (_Create_stringstream() << _Val).str();
             this->_MySocket->send( _Val_str.c_str(), _Val_str.length() + 1 );
             }
         return (*this);
@@ -1331,9 +1338,7 @@ protected:
             { // text deserialization, recv string representation
             std::basic_string<_Elem, _Traits> _Val_str;
             _Common_recv_string( _Val_str );
-            std::basic_stringstream<_Elem, _Traits> _Val_sstream( _Val_str );
-            _Val_sstream.setf( _MyBase::setf( 0 ) );
-            _Val_sstream >> _Val;
+            _Create_stringstream( _Val_str ) >> _Val;
             }
         return (*this);
         }
@@ -1370,6 +1375,50 @@ protected:
         this->_MySocket->recv( _Str_buffer.data(), _Str_buffer.size() * sizeof( _Elem ) );
         _Str.assign( _Str_buffer.data() );
         return (*this);
+        }
+
+    inline std::basic_ostringstream<_Elem, _Traits> _Create_stringstream()
+        {   // construct stringstream with the same formatting as the socketstream
+        std::basic_ostringstream<_Elem, _Traits> _Stream;
+        const int _fmtfl = setf( 0 );
+        if( _fmtfl & _MyBase::dec ) _Stream << std::dec;
+        if( _fmtfl & _MyBase::oct ) _Stream << std::oct;
+        if( _fmtfl & _MyBase::hex ) _Stream << std::hex;
+        if( _fmtfl & _MyBase::boolalpha ) _Stream << std::boolalpha;
+        if( _fmtfl & _MyBase::fixed ) _Stream << std::fixed;
+        if( _fmtfl & _MyBase::internal ) _Stream << std::internal;
+        if( _fmtfl & _MyBase::left ) _Stream << std::left;
+        if( _fmtfl & _MyBase::right ) _Stream << std::right;
+        if( _fmtfl & _MyBase::scientific ) _Stream << std::scientific;
+        if( _fmtfl & _MyBase::showbase ) _Stream << std::showbase;
+        if( _fmtfl & _MyBase::showpoint ) _Stream << std::showpoint;
+        if( _fmtfl & _MyBase::showpos ) _Stream << std::showpos;
+        if( _fmtfl & _MyBase::skipws ) _Stream << std::skipws;
+        if( _fmtfl & _MyBase::unitbuf ) _Stream << std::unitbuf;
+        if( _fmtfl & _MyBase::uppercase ) _Stream << std::uppercase;
+        return _Stream;
+        }
+
+    inline std::basic_istringstream<_Elem, _Traits> _Create_stringstream( const std::basic_string<_Elem, _Traits>& _Str )
+        {   // construct stringstream with the same formatting as the socketstream
+        std::basic_istringstream<_Elem, _Traits> _Stream( _Str );
+        const int _fmtfl = setf( 0 );
+        if( _fmtfl & _MyBase::dec ) _Stream >> std::dec;
+        if( _fmtfl & _MyBase::oct ) _Stream >> std::oct;
+        if( _fmtfl & _MyBase::hex ) _Stream >> std::hex;
+        if( _fmtfl & _MyBase::boolalpha ) _Stream >> std::boolalpha;
+        if( _fmtfl & _MyBase::fixed ) _Stream >> std::fixed;
+        if( _fmtfl & _MyBase::internal ) _Stream >> std::internal;
+        if( _fmtfl & _MyBase::left ) _Stream >> std::left;
+        if( _fmtfl & _MyBase::right ) _Stream >> std::right;
+        if( _fmtfl & _MyBase::scientific ) _Stream >> std::scientific;
+        if( _fmtfl & _MyBase::showbase ) _Stream >> std::showbase;
+        if( _fmtfl & _MyBase::showpoint ) _Stream >> std::showpoint;
+        if( _fmtfl & _MyBase::showpos ) _Stream >> std::showpos;
+        if( _fmtfl & _MyBase::skipws ) _Stream >> std::skipws;
+        if( _fmtfl & _MyBase::unitbuf ) _Stream >> std::unitbuf;
+        if( _fmtfl & _MyBase::uppercase ) _Stream >> std::uppercase;
+        return _Stream;
         }
 
     };
