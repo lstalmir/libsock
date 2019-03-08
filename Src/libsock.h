@@ -799,13 +799,16 @@ public:
         swap( _Original );
         }
 
+    inline socket& operator=( socket&& _Original ) noexcept
+        {   // take ownership of socket object
+        _Close();
+        swap( _Original );
+        return (*this);
+        }
+
     inline virtual ~socket() noexcept
         {   // destroy socket object
-        __impl::closesocket( this->_MyHandle );
-        this->_MyHandle = _Invalid_socket;
-        this->_MyAddr_family = socket_address_family::unknown;
-        this->_MyType = socket_type::unknown;
-        this->_MyProtocol = unknown_socket_protocol();
+        _Close();
         }
 
     inline void swap( socket& _Other ) noexcept
@@ -823,11 +826,39 @@ public:
             _Optval, _Optlen );
         }
 
+    template<typename _SockOptTy, typename _VTy>
+    inline void set_opt( _SockOptTy _Opt, const _VTy& _Optval )
+        {   // set socket option value
+        set_opt( _Opt, &_Optval, sizeof( _VTy ) );
+        }
+
+    template<typename _SockOptTy>
+    inline void set_opt( _SockOptTy _Opt, const bool& _Optval )
+        {   // set socket option value
+        set_opt( _Opt, static_cast<long>(_Optval) );
+        }
+
     template<typename _SockOptTy>
     inline void get_opt( _SockOptTy _Opt, void* _Optval, size_t* _Optlen ) const
         {   // get socket option value
         _Get_socket_opt( static_cast<int>(_Opt), _Socket_opt_level<_SockOptTy>::value,
             _Optval, _Optlen );
+        }
+
+    template<typename _SockOptTy, typename _VTy>
+    inline void get_opt( _SockOptTy _Opt, _VTy& _Optval ) const
+        {   // get socket option value
+        size_t optsize = sizeof( _VTy );
+        get_opt( _Opt, &_Optval, &optsize );
+        }
+
+    template<typename _SockOptTy>
+    inline void get_opt( _SockOptTy _Opt, bool& _Optval ) const
+        {   // get socket option value
+        size_t optsize = sizeof( long );
+        long optval = 0;
+        get_opt( _Opt, &optval, &optsize );
+        _Optval = static_cast<bool>(optval);
         }
 
     inline virtual int send( const void* _Data, size_t _ByteSize, _Socket_send_flags_helper _Flags = socket_send_flags::none )
@@ -993,6 +1024,15 @@ protected:
         , _MyType( _Type )
         , _MyProtocol( _Protocol )
         {   // construct socket object from existing handle
+        }
+
+    inline void _Close() noexcept
+        {   // close the socket handle
+        __impl::closesocket( this->_MyHandle );
+        this->_MyHandle = _Invalid_socket;
+        this->_MyAddr_family = socket_address_family::unknown;
+        this->_MyType = socket_type::unknown;
+        this->_MyProtocol = unknown_socket_protocol();
         }
 
     _NODISCARD inline bool _Is_stream_socket() const noexcept
