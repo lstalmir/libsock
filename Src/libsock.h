@@ -837,195 +837,227 @@ _NODISCARD inline socket_address_info get_socket_address_info(
     }
 
 
+// ENUM CLASS dscp
+enum class dscp
+    {
+    cs0         = 0b000'000, // standard
+    cs1         = 0b001'000, // low-priority data
+    cs2         = 0b010'000, // oam
+    cs3         = 0b011'000, // broadcast video
+    cs4         = 0b100'000, // real-time interactive
+    cs5         = 0b101'000, // signaling
+    cs6         = 0b110'000, // network control
+    ef          = 0b101'110, // telephony
+    af11        = 0b001'010, // high-throughput data (low drop probability)
+    af12        = 0b001'100, // high-throughput data (medium drop probability)
+    af13        = 0b001'110, // high-throughput data (high drop probability)
+    af21        = 0b010'010, // low-latency data (low drop probability)
+    af22        = 0b010'100, // low-latency data (medium drop probability)
+    af23        = 0b010'110, // low-latency data (high drop probability)
+    af31        = 0b011'010, // multimedia streaming (low drop probability)
+    af32        = 0b011'100, // multimedia streaming (medium drop probability)
+    af33        = 0b011'110, // multimedia streaming (high drop probability)
+    af41        = 0b100'010, // multimedia conferencing (low drop probability)
+    af42        = 0b100'100, // multimedia conferencing (medium drop probability)
+    af43        = 0b100'110  // multimedia conferencing (high drop probability)
+    };
+
+typedef dscp differentiated_services_code_point;
+
+
 // CLASS inet_header
 class inet_header
     {
 protected:
     // header data, stored in big-endian dwords
-    unsigned long _Dw[5];
+    unsigned long _MyData[5];
 
 public:
     inline inet_header() noexcept
         {   // construct empty ipv4 header
-        _Dw[0] = make_big_endian( 0x45000014UL ).as_big_endian();
-        _Dw[1] = 0;
-        _Dw[2] = 0;
-        _Dw[3] = 0;
-        _Dw[4] = 0;
+        _MyData[0] = make_big_endian( 0x45000014UL ).as_big_endian();
+        _MyData[1] = 0;
+        _MyData[2] = 0;
+        _MyData[3] = 0;
+        _MyData[4] = 0;
         }
 
-    inline void* data() noexcept
+    inline inet_header( const void* _Packet, size_t _PacketSize )
+        {   // construct ipv4 header from packet
+        unsigned long len = make_big_endian( ((*(const unsigned long*)_Packet) >> 24) & 0xF, true ).as_host_endian();
+        (len);
+        (_PacketSize);
+        }
+
+    _NODISCARD inline void* data() noexcept
         {   // get pointer to the ipv4 header raw data
         return reinterpret_cast<void*>(this);
         }
 
-    inline const void* data() const noexcept
+    _NODISCARD inline const void* data() const noexcept
         {   // get pointer to the ipv4 header raw data
         return reinterpret_cast<const void*>(this);
         }
 
-    inline size_t size() const noexcept
-        {   // get size of the ipv4 header data
+    _NODISCARD inline size_t size() const noexcept
+        {   // get size of the ipv4 header
         return sizeof( inet_header );
         }
 
-    inline unsigned long version() const noexcept
+    _NODISCARD inline unsigned long version() const noexcept
         {   // get header version
-        return static_cast<unsigned long>(((make_big_endian( _Dw[0], true ).as_host_endian()) >> 28) & 0xF);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[0], true ).as_host_endian()) >> 28) & 0xF);
         }
 
     inline inet_header& version( unsigned long _Ver ) noexcept
         {   // set header version
-        _Dw[0] &= make_big_endian( 0x0FFFFFFF );
-        _Dw[0] |= make_big_endian( (_Ver << 28) & 0xF0000000 );
+        _MyData[0] &= make_big_endian( 0x0FFFFFFF );
+        _MyData[0] |= make_big_endian( (_Ver << 28) & 0xF0000000 );
         return (*this);
         }
 
-    inline unsigned long header_length() const noexcept
+    _NODISCARD inline unsigned long header_length() const noexcept
         {   // get length of the header
-        return static_cast<unsigned long>(((make_big_endian( _Dw[0], true ).as_host_endian()) >> 24) & 0xF);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[0], true ).as_host_endian()) >> 24) & 0xF);
         }
 
     inline inet_header& header_length( unsigned long _Length ) noexcept
         {   // set length of the header
-        _Dw[0] &= make_big_endian( 0xF0FFFFFF );
-        _Dw[0] |= make_big_endian( (_Length << 24) & 0x0F000000 );
+        _MyData[0] &= make_big_endian( 0xF0FFFFFF );
+        _MyData[0] |= make_big_endian( (_Length << 24) & 0x0F000000 );
         return (*this);
         }
 
-    inline unsigned long type_of_service() const noexcept
+    _NODISCARD inline dscp type_of_service() const noexcept
         {   // get type of service
-        return static_cast<unsigned long>(((make_big_endian( _Dw[0], true ).as_host_endian()) >> 18) & 0x3F);
+        return static_cast<dscp>(((make_big_endian( _MyData[0], true ).as_host_endian()) >> 18) & 0x3F);
         }
 
-    inline inet_header& type_of_service( unsigned long _Type ) noexcept
+    inline inet_header& type_of_service( dscp _Type ) noexcept
         {   // set type of service
-        _Dw[0] &= make_big_endian( 0xFF03FFFF );
-        _Dw[0] |= make_big_endian( (_Type << 18) & 0x00FC0000 );
+        _MyData[0] &= make_big_endian( 0xFF03FFFF );
+        _MyData[0] |= make_big_endian( (static_cast<unsigned long>(_Type) << 18) & 0x00FC0000 );
         return (*this);
         }
 
-    inline unsigned long ecn() const noexcept
+    _NODISCARD inline unsigned long ecn() const noexcept
         {   // get ecn
-        return static_cast<unsigned long>(((make_big_endian( _Dw[0], true ).as_host_endian()) >> 16) & 0x3);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[0], true ).as_host_endian()) >> 16) & 0x3);
         }
 
     inline inet_header& ecn( unsigned long _Ecn ) noexcept
         {   // set ecn
-        _Dw[0] &= make_big_endian( 0xFFFCFFFF );
-        _Dw[0] |= make_big_endian( (_Ecn << 16) & 0x00030000 );
+        _MyData[0] &= make_big_endian( 0xFFFCFFFF );
+        _MyData[0] |= make_big_endian( (_Ecn << 16) & 0x00030000 );
         return (*this);
         }
 
-    inline unsigned long packet_length() const noexcept
+    _NODISCARD inline unsigned long packet_length() const noexcept
         {   // get total packet length
-        return static_cast<unsigned long>(((make_big_endian( _Dw[0], true ).as_host_endian())) & 0xFFFF);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[0], true ).as_host_endian())) & 0xFFFF);
         }
 
     inline inet_header& packet_length( unsigned long _Length ) noexcept
         {   // set total packet length
-        _Dw[0] &= make_big_endian( 0xFFFF0000 );
-        _Dw[0] |= make_big_endian( _Length & 0x0000FFFF );
+        _MyData[0] &= make_big_endian( 0xFFFF0000 );
+        _MyData[0] |= make_big_endian( _Length & 0x0000FFFF );
         return (*this);
         }
 
-    inline unsigned long identification() const noexcept
+    _NODISCARD inline unsigned long identification() const noexcept
         {   // get packet identification number
-        return static_cast<unsigned long>(((make_big_endian( _Dw[1], true ).as_host_endian()) >> 16) & 0xFFFF);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[1], true ).as_host_endian()) >> 16) & 0xFFFF);
         }
 
     inline inet_header& identification( unsigned long _Id ) noexcept
         {   // set packet identification number
-        _Dw[1] &= make_big_endian( 0x0000FFFF );
-        _Dw[1] |= make_big_endian( (_Id << 16) & 0xFFFF0000 );
+        _MyData[1] &= make_big_endian( 0x0000FFFF );
+        _MyData[1] |= make_big_endian( (_Id << 16) & 0xFFFF0000 );
         return (*this);
         }
 
-    inline unsigned long flags() const noexcept
+    _NODISCARD inline unsigned long flags() const noexcept
         {   // get packet flags
-        return static_cast<unsigned long>(((make_big_endian( _Dw[1], true ).as_host_endian()) >> 13) & 0x7);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[1], true ).as_host_endian()) >> 13) & 0x7);
         }
 
     inline inet_header& flags( unsigned long _Flags ) noexcept
         {   // set packet flags
-        _Dw[1] &= make_big_endian( 0xFFFF1FFF );
-        _Dw[1] |= make_big_endian( (_Flags << 13) & 0x0000E000 );
+        _MyData[1] &= make_big_endian( 0xFFFF1FFF );
+        _MyData[1] |= make_big_endian( (_Flags << 13) & 0x0000E000 );
         return (*this);
         }
 
-    inline unsigned long fragment_offset() const noexcept
+    _NODISCARD inline unsigned long fragment_offset() const noexcept
         {   // get fragment offset
-        return static_cast<unsigned long>(make_big_endian( _Dw[1], true ).as_host_endian() & 0x00001FFF);
+        return static_cast<unsigned long>(make_big_endian( _MyData[1], true ).as_host_endian() & 0x00001FFF);
         }
 
     inline inet_header& fragment_offset( unsigned long _FragOffset ) noexcept
         {   // set fragment offset
-        _Dw[1] &= make_big_endian( 0xFFFFE000 );
-        _Dw[1] |= make_big_endian( _FragOffset & 0x00001FFF );
+        _MyData[1] &= make_big_endian( 0xFFFFE000 );
+        _MyData[1] |= make_big_endian( _FragOffset & 0x00001FFF );
         return (*this);
         }
 
-    inline unsigned char ttl() const noexcept
+    _NODISCARD inline unsigned char ttl() const noexcept
         {   // get packet TTL (time-to-live) value
-        return static_cast<unsigned long>(((make_big_endian( _Dw[2], true ).as_host_endian()) >> 24) & 0xFF);
+        return static_cast<unsigned long>(((make_big_endian( _MyData[2], true ).as_host_endian()) >> 24) & 0xFF);
         }
 
     inline inet_header& ttl( unsigned char _Ttl ) noexcept
         {   // set packet TTL (time-to-live) value
-        _Dw[2] &= make_big_endian( 0x00FFFFFF );
-        _Dw[2] |= make_big_endian( (static_cast<unsigned long>(_Ttl) << 24) & 0xFF000000 );
+        _MyData[2] &= make_big_endian( 0x00FFFFFF );
+        _MyData[2] |= make_big_endian( (static_cast<unsigned long>(_Ttl) << 24) & 0xFF000000 );
         return (*this);
         }
 
-    inline socket_protocol protocol() const noexcept
+    _NODISCARD inline socket_protocol protocol() const noexcept
         {   // get transport layer protocol
-        return socket_protocol( static_cast<int>(((make_big_endian( _Dw[2], true ).as_host_endian()) >> 16) & 0xFF) );
+        return socket_protocol( static_cast<int>(((make_big_endian( _MyData[2], true ).as_host_endian()) >> 16) & 0xFF) );
         }
 
     inline inet_header& protocol( socket_protocol _Proto ) noexcept
         {   // set transport layer protocol
-        _Dw[2] &= make_big_endian( 0xFF00FFFF );
-        _Dw[2] |= make_big_endian( (static_cast<unsigned long>(_Proto.get_id()) << 16) & 0x00FF0000 );
+        _MyData[2] &= make_big_endian( 0xFF00FFFF );
+        _MyData[2] |= make_big_endian( (static_cast<unsigned long>(_Proto.get_id()) << 16) & 0x00FF0000 );
         return (*this);
         }
 
-    inline unsigned short checksum() const noexcept
+    _NODISCARD inline unsigned short checksum() const noexcept
         {   // get header checksum
-        return static_cast<unsigned long>(make_big_endian( _Dw[2], true ).as_host_endian() & 0x0000FFFF);
+        return static_cast<unsigned long>(make_big_endian( _MyData[2], true ).as_host_endian() & 0x0000FFFF);
         }
 
     inline inet_header& checksum( unsigned short _Checksum ) noexcept
         {   // set header checksum
-        _Dw[2] &= make_big_endian( 0xFFFF0000 );
-        _Dw[2] |= make_big_endian<unsigned long>( static_cast<unsigned long>(_Checksum) & 0x0000FFFF );
+        _MyData[2] &= make_big_endian( 0xFFFF0000 );
+        _MyData[2] |= make_big_endian<unsigned long>( static_cast<unsigned long>(_Checksum) & 0x0000FFFF );
         return (*this);
         }
 
-    inline unsigned long source_ip_address() const noexcept
+    _NODISCARD inline unsigned long source_ip_address() const noexcept
         {   // get source ip address in host byte order
-        return make_big_endian( _Dw[3], true ).as_host_endian();
+        return make_big_endian( _MyData[3], true ).as_host_endian();
         }
 
     inline inet_header& source_ip_address( unsigned long _Addr ) noexcept
         {   // set source ip address
-        _Dw[3] = make_big_endian( _Addr );
+        _MyData[3] = make_big_endian( _Addr );
         return (*this);
         }
 
-    inline unsigned long dest_ip_address() const noexcept
+    _NODISCARD inline unsigned long dest_ip_address() const noexcept
         {   // get destination ip address in host byte order
-        return make_big_endian( _Dw[4], true ).as_host_endian();
+        return make_big_endian( _MyData[4], true ).as_host_endian();
         }
 
     inline inet_header& dest_ip_address( unsigned long _Addr ) noexcept
         {   // set destination ip address
-        _Dw[4] = make_big_endian( _Addr );
+        _MyData[4] = make_big_endian( _Addr );
         return (*this);
         }
     };
-
-static_assert(sizeof( inet_header ) == 20,
-    "inet_header structure size mismatch");
 
 
 // ENUM CLASS socket_recv_flags

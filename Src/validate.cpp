@@ -99,8 +99,8 @@ int validate_inet_header_packing()
             {
             // DWORD 0
             version( 0xF );
-            length( 0 );
-            type_of_service( 0x3F );
+            header_length( 0 );
+            type_of_service( (dscp)0x3F );
             ecn( 0 );
             packet_length( 0x1234 );
 
