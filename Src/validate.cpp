@@ -91,10 +91,59 @@ void raw_sock_thread_proc() noexcept
 // END raw_sock_thread_proc
 
 
+int validate_inet_header_packing()
+    {
+    struct test_inet_header : inet_header
+        {
+        test_inet_header() : inet_header()
+            {
+            // DWORD 0
+            version( 0xF );
+            length( 0 );
+            type_of_service( 0x3F );
+            ecn( 0 );
+            packet_length( 0x1234 );
+
+            // DWORD 1
+            identification( 0x8765 );
+            flags( 0x5 );
+            fragment_offset( 0x1563 );
+
+            // DWORD 2
+            ttl( 0xAF );
+            protocol( 0x33 );
+            checksum( 0xCDEF );
+
+            // DWORD 3
+            source_ip_address( 0x12345678 );
+
+            // DWORD 4
+            dest_ip_address( 0xFEDCBA98 );
+            }
+        };
+
+    test_inet_header header;
+
+    uint8_t expectedBytes[] =
+        {
+        0xF0, 0xFC, 0x12, 0x34, // DWORD 0
+        0x87, 0x65, 0xB5, 0x63, // DWORD 1
+        0xAF, 0x33, 0xCD, 0xEF, // DWORD 2
+        0x12, 0x34, 0x56, 0x78, // DWORD 3
+        0xFE, 0xDC, 0xBA, 0x98  // DWORD 4
+        };
+
+    return memcmp( expectedBytes, &header, sizeof( header ) );
+    }
+
+
 int main()
 _TRY_BEGIN
     {
     libsock_scope sockscope;
+
+    if( int diff = validate_inet_header_packing() )
+        return diff;
 
     socket_address_info hints(
         socket_address_family::inet,
