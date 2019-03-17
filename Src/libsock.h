@@ -10,6 +10,7 @@
 #include <sstream>
 #include <vector>
 #include <type_traits>
+#include <algorithm>
 
 #ifndef _CONSTEXPR_IF
 #if defined( __cpp_if_constexpr )
@@ -241,6 +242,8 @@ using ::wcscpy;
 
 using ::std::swap;
 using ::std::move;
+using ::std::min;
+using ::std::max;
 
 #if defined( OS_WINDOWS )
 using ::closesocket;
@@ -865,6 +868,34 @@ enum class dscp
 typedef dscp differentiated_services_code_point;
 
 
+// ENUM CLASS socket_send_flags
+enum class inet_header_flags
+    {
+    none                = 0,
+    more_fragments      = 1,
+    dont_fragment       = 2
+    };
+
+using _Inet_header_flags_helper = _Socket_flags_helper<inet_header_flags, int>;
+
+_NODISCARD _Inet_header_flags_helper operator|( inet_header_flags _1, inet_header_flags _2 ) noexcept
+    {   // construct socket recv flags helper from two flags
+    return _Inet_header_flags_helper( _1 ) | _2;
+    }
+
+
+// ENUM CLASS ecn
+enum class ecn_mode
+    {
+    disabled            = 0,
+    ect_0               = 2,
+    ect_1               = 1,
+    ce                  = 3
+    };
+
+typedef ecn_mode explicit_congestion_notification_mode;
+
+
 // CLASS inet_header
 class inet_header
     {
@@ -875,18 +906,56 @@ protected:
 public:
     inline inet_header() noexcept
         {   // construct empty ipv4 header
+        __impl::memset( this->_MyData, 0, sizeof( _MyData ) );
         _MyData[0] = make_big_endian( 0x45000014UL ).as_big_endian();
-        _MyData[1] = 0;
-        _MyData[2] = 0;
-        _MyData[3] = 0;
-        _MyData[4] = 0;
         }
 
     inline inet_header( const void* _Packet, size_t _PacketSize )
         {   // construct ipv4 header from packet
-        unsigned long len = make_big_endian( ((*(const unsigned long*)_Packet) >> 24) & 0xF, true ).as_host_endian();
-        (len);
-        (_PacketSize);
+        if( _PacketSize < (5 * sizeof( unsigned long )) )
+            { // provided data does not contain valid ipv4 packet header
+            throw std::invalid_argument(
+                "IPv4 header must be at least 20 bytes long." );
+            }
+        const inet_header* pPacket = reinterpret_cast<const inet_header*>(_Packet);
+        if( pPacket->header_length() < 5 )
+            { // provided data is not valid ipv4 packet header
+            throw std::invalid_argument(
+                "IPv4 header IHL (Internet Header Length) must be at least 5. "
+                "The provided data is not valid IPv4 header." );
+            }
+        _Copy_from( _Packet );
+        }
+
+    inline inet_header( const void* _Packet, size_t _PacketSize, std::nothrow_t ) noexcept
+        {   // construct ipv4 header from packet
+        __impl::memset( this->_MyData, 0, sizeof( _MyData ) );
+        if( _PacketSize > 0 )
+            __impl::memcpy( this->_MyData, _Packet, __impl::min( _PacketSize, sizeof( _MyData ) ) );
+        }
+
+    inline inet_header( const inet_header& _Other ) noexcept
+        {   // construct copy of ipv4 header
+        _Copy_from( _Other._MyData );
+        }
+
+    inline inet_header& operator=( const inet_header& _Other ) noexcept
+        {   // assign values from other ipv4 header
+        _Copy_from( _Other._MyData );
+        return (*this);
+        }
+
+    inline inet_header( inet_header&& _Other ) noexcept
+        : inet_header()
+        {   // move header from other
+        __impl::swap( this->_MyData, _Other._MyData );
+        }
+
+    inline inet_header& operator=( inet_header&& _Other ) noexcept
+        {   // move header from other
+        inet_header _Head( __impl::move( _Other ) );
+        __impl::swap( this->_MyData, _Head._MyData );
+        return (*this);
         }
 
     _NODISCARD inline void* data() noexcept
@@ -940,15 +1009,15 @@ public:
         return (*this);
         }
 
-    _NODISCARD inline unsigned long ecn() const noexcept
+    _NODISCARD inline ecn_mode ecn() const noexcept
         {   // get ecn
-        return static_cast<unsigned long>(((make_big_endian( _MyData[0], true ).as_host_endian()) >> 16) & 0x3);
+        return static_cast<ecn_mode>(((make_big_endian( _MyData[0], true ).as_host_endian()) >> 16) & 0x3);
         }
 
-    inline inet_header& ecn( unsigned long _Ecn ) noexcept
+    inline inet_header& ecn( ecn_mode _Ecn ) noexcept
         {   // set ecn
         _MyData[0] &= make_big_endian( 0xFFFCFFFF );
-        _MyData[0] |= make_big_endian( (_Ecn << 16) & 0x00030000 );
+        _MyData[0] |= make_big_endian( (static_cast<unsigned long>(_Ecn) << 16) & 0x00030000 );
         return (*this);
         }
 
@@ -976,15 +1045,15 @@ public:
         return (*this);
         }
 
-    _NODISCARD inline unsigned long flags() const noexcept
+    _NODISCARD inline _Inet_header_flags_helper flags() const noexcept
         {   // get packet flags
-        return static_cast<unsigned long>(((make_big_endian( _MyData[1], true ).as_host_endian()) >> 13) & 0x7);
+        return static_cast<_Inet_header_flags_helper>(((make_big_endian( _MyData[1], true ).as_host_endian()) >> 13) & 0x7);
         }
 
-    inline inet_header& flags( unsigned long _Flags ) noexcept
+    inline inet_header& flags( _Inet_header_flags_helper _Flags ) noexcept
         {   // set packet flags
         _MyData[1] &= make_big_endian( 0xFFFF1FFF );
-        _MyData[1] |= make_big_endian( (_Flags << 13) & 0x0000E000 );
+        _MyData[1] |= make_big_endian( (static_cast<unsigned long>((int)_Flags) << 13) & 0x0000E000 );
         return (*this);
         }
 
@@ -1056,6 +1125,12 @@ public:
         {   // set destination ip address
         _MyData[4] = make_big_endian( _Addr );
         return (*this);
+        }
+
+protected:
+    inline void _Copy_from( const void* _Ptr ) noexcept
+        {   // copy values from _Ptr into _MyData
+        __impl::memcpy( this->_MyData, _Ptr, sizeof( _MyData ) );
         }
     };
 

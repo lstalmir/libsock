@@ -101,12 +101,12 @@ int validate_inet_header_packing()
             version( 0xF );
             header_length( 0 );
             type_of_service( (dscp)0x3F );
-            ecn( 0 );
+            ecn( ecn_mode::ect_0 );
             packet_length( 0x1234 );
 
             // DWORD 1
             identification( 0x8765 );
-            flags( 0x5 );
+            flags( inet_header_flags::dont_fragment | inet_header_flags::more_fragments );
             fragment_offset( 0x1563 );
 
             // DWORD 2
@@ -126,8 +126,8 @@ int validate_inet_header_packing()
 
     uint8_t expectedBytes[] =
         {
-        0xF0, 0xFC, 0x12, 0x34, // DWORD 0
-        0x87, 0x65, 0xB5, 0x63, // DWORD 1
+        0xF0, 0xFE, 0x12, 0x34, // DWORD 0
+        0x87, 0x65, 0x75, 0x63, // DWORD 1
         0xAF, 0x33, 0xCD, 0xEF, // DWORD 2
         0x12, 0x34, 0x56, 0x78, // DWORD 3
         0xFE, 0xDC, 0xBA, 0x98  // DWORD 4
